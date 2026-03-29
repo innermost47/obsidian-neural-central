@@ -80,9 +80,9 @@ def base_template(
               <tr>
                 <td style="font-size:12px;color:#cccccc;font-family:'Inter',Helvetica,Arial,sans-serif;line-height:1.8;">
                   <p style="margin:0 0 8px;">
-                    <a href="{settings.APP_URL}" style="color:#b8605c;text-decoration:none;font-weight:600;">obsidian-neural.com</a>
+                    <a href="{settings.FRONTEND_URL}" style="color:#b8605c;text-decoration:none;font-weight:600;">{settings.FRONTEND_URL}</a>
                     &nbsp;&bull;&nbsp;
-                    <a href="https://github.com/innermost47/ai-dj" style="color:#cccccc;text-decoration:none;">GitHub</a>
+                    <a href="{settings.REPO_URL} style="color:#cccccc;text-decoration:none;">GitHub</a>
                     &nbsp;&bull;&nbsp;
                     <a href="{settings.FRONTEND_URL}/dashboard.html" style="color:#cccccc;text-decoration:none;">Dashboard</a>
                   </p>

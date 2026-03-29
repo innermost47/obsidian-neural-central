@@ -12,6 +12,7 @@ from server.core.security import (
 from server.services.delayed_tasks import send_delayed_press_kit
 from server.config import settings
 import secrets
+import hashlib
 
 
 router = APIRouter(prefix="/press", tags=["Authentication"])
@@ -21,10 +22,11 @@ router = APIRouter(prefix="/press", tags=["Authentication"])
 async def confirm_press_request(
     token: str, background_tasks: BackgroundTasks, db: Session = Depends(get_db)
 ):
+    token_hash = hashlib.sha256(token.encode()).hexdigest()
     request = (
         db.query(PressRequest)
         .filter(
-            PressRequest.token == token,
+            PressRequest.token == token_hash or token,
             PressRequest.expires_at > datetime.now(timezone.utc),
         )
         .first()
@@ -45,7 +47,7 @@ async def confirm_press_request(
             email_verified=True,
             is_active=True,
             accept_news_updates=False,
-            subscription_tier=request.payload.get("tier", "press_vip"),
+            subscription_tier=None,
         )
         db.add(new_user)
         db.commit()

@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks
 from fastapi.responses import RedirectResponse
 from sqlalchemy.orm import Session
 import pyotp
+import hashlib
 import uuid
 from datetime import datetime, timedelta
 from server.api.models import (
@@ -656,7 +657,7 @@ async def register_press_request(
     _: str = Depends(verify_press_key),
 ):
     token = secrets.token_hex(32)
-
+    token_hash = hashlib.sha256(token.encode()).hexdigest()
     payload = {
         "email": user_data.email,
         "credits": user_data.credits,
@@ -664,7 +665,7 @@ async def register_press_request(
     }
 
     new_request = PressRequest(
-        token=token,
+        token=token_hash,
         email=user_data.email,
         payload=payload,
         expires_at=datetime.utcnow() + timedelta(days=30),

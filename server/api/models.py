@@ -12,7 +12,7 @@ class UserRegister(BaseModel):
 class PressRegister(BaseModel):
     email: EmailStr
     nom: str
-    tier: Optional[str] = "press_vip"
+    tier: Optional[str] = None
     credits: Optional[int] = 200
     accept_news_updates: Optional[bool] = True
 

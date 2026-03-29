@@ -12,6 +12,7 @@ from sqlalchemy import (
     ForeignKey,
     Enum as SQLEnum,
     JSON,
+    BigInteger,
 )
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, relationship
@@ -238,6 +239,7 @@ class Provider(Base):
     last_ping = Column(DateTime, nullable=True)
     last_seen = Column(DateTime, nullable=True)
     created_at = Column(DateTime, default=func.now())
+    verification_failures = Column(Integer, nullable=False, default=0)
     user_id = Column(
         Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True
     )
@@ -245,6 +247,7 @@ class Provider(Base):
     jobs = relationship("ProviderJob", back_populates="provider")
     pings = relationship("ProviderPing", back_populates="provider")
     user = relationship("User", back_populates="provider", foreign_keys=[user_id])
+    verifications = relationship("ProviderVerification", back_populates="provider")
 
     def __repr__(self):
         return f"<Provider {self.name} ({'banned' if self.is_banned else 'active' if self.is_active else 'inactive'})>"
@@ -286,6 +289,25 @@ class ProviderPing(Base):
     provider = relationship("Provider", back_populates="pings")
 
     __table_args__ = (Index("idx_ping_provider_date", "provider_id", "pinged_at"),)
+
+
+class ProviderVerification(Base):
+    __tablename__ = "provider_verifications"
+
+    id = Column(Integer, primary_key=True, index=True)
+    provider_id = Column(
+        Integer,
+        ForeignKey("providers.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    prompt = Column(String(255), nullable=False)
+    seed = Column(BigInteger, nullable=False)
+    similarity_score = Column(Float, nullable=True)
+    passed = Column(Boolean, nullable=False, default=False)
+    verified_at = Column(DateTime, nullable=False)
+
+    provider = relationship("Provider", back_populates="verifications")
 
 
 def get_db():

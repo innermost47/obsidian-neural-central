@@ -5,6 +5,7 @@ from fastapi.staticfiles import StaticFiles
 import uvicorn
 import logging
 import os
+import asyncio
 from server.config import settings
 from server.core.database import init_db, SessionLocal
 from server.services.provider_ping_service import ProviderPingService
@@ -29,6 +30,8 @@ from server.api.routes import (
 )
 import json
 from pathlib import Path
+from server.services.provider_verification_service import ProviderVerificationService
+
 
 logger = logging.getLogger(__name__)
 
@@ -84,6 +87,8 @@ async def lifespan(app: FastAPI):
             replace_existing=True,
         )
         provider_scheduler.start()
+        asyncio.create_task(ProviderVerificationService.run_forever(SessionLocal))
+        logger.info("✅ Provider verification loop started (random interval 1h–5h)")
         logger.info(
             "✅ Provider ping scheduler started (every hour, 60% random probability)"
         )

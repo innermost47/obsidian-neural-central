@@ -22,6 +22,7 @@ from server.core.database import (
     Provider,
     ProviderJob,
     ProviderPing,
+    ProviderVerification,
 )
 
 # this is the Alembic Config object
