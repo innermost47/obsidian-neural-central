@@ -8,3 +8,4 @@ obsidian.json
 *.log
 public/*
 !public/.gitkeep
+output.log
