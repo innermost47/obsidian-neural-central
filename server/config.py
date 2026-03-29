@@ -1,0 +1,105 @@
+import os
+from dotenv import load_dotenv
+
+ENV = os.getenv("ENV", "dev")
+env_file = f".env.{ENV}"
+
+
+load_dotenv(env_file)
+
+
+class Settings:
+    API_HOST = os.getenv("API_HOST", "127.0.0.1")
+    API_PORT = int(os.getenv("API_PORT", 8000))
+    ENVIRONMENT = os.getenv("ENVIRONMENT", "dev")
+
+    GA4_PROPERTY_ID: str = os.getenv("GA4_PROPERTY_ID", "")
+    GOOGLE_ANALYTICS_CREDENTIALS_PATH: str = os.getenv(
+        "GOOGLE_ANALYTICS_CREDENTIALS_PATH", ""
+    )
+
+    DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./obsidian_neural.db")
+
+    FRONTEND_URL = os.getenv("FRONTEND_URL")
+
+    SECRET_KEY = os.getenv("SECRET_KEY")
+    ALGORITHM = os.getenv("ALGORITHM", "HS256")
+    ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", 43200))
+
+    STRIPE_SECRET_KEY = os.getenv("STRIPE_SECRET_KEY")
+    STRIPE_WEBHOOK_SECRET = os.getenv("STRIPE_WEBHOOK_SECRET")
+    STRIPE_PRICE_BASE = os.getenv("STRIPE_PRICE_BASE")
+    STRIPE_PRICE_STARTER = os.getenv("STRIPE_PRICE_STARTER")
+    STRIPE_PRICE_PRO = os.getenv("STRIPE_PRICE_PRO")
+    STRIPE_PRICE_STUDIO = os.getenv("STRIPE_PRICE_STUDIO")
+
+    FAL_KEY = os.getenv("FAL_KEY")
+
+    CREDIT_STANDARD = int(os.getenv("CREDIT_STANDARD", 1))
+    CREDIT_LLM = int(os.getenv("CREDIT_LLM", 1))
+
+    SMTP_HOST = os.getenv("SMTP_HOST", "smtp.gmail.com")
+    SMTP_PORT = int(os.getenv("SMTP_PORT", 587))
+    SMTP_USERNAME = os.getenv("SMTP_USERNAME")
+    SMTP_PASSWORD = os.getenv("SMTP_PASSWORD")
+    SMTP_FROM_EMAIL = os.getenv("SMTP_FROM_EMAIL")
+    SMTP_FROM_NAME = os.getenv("SMTP_FROM_NAME", "Obsidian Neural")
+    SMTP_TO_EMAIL = os.getenv("SMTP_TO_EMAIL")
+
+    GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID")
+    GOOGLE_CLIENT_SECRET = os.getenv("GOOGLE_CLIENT_SECRET")
+    GOOGLE_REDIRECT_URI = os.getenv("GOOGLE_REDIRECT_URI")
+
+    EMAIL_VERIFICATION_EXPIRE_HOURS = int(
+        os.getenv("EMAIL_VERIFICATION_EXPIRE_HOURS", 24)
+    )
+
+    PASSWORD_RESET_EXPIRE_HOURS = int(os.getenv("PASSWORD_RESET_EXPIRE_HOURS", 1))
+
+    ENCRYPTION_KEY = os.getenv("ENCRYPTION_KEY")
+
+    PRESS_REGISTRATION_KEY = os.getenv("PRESS_REGISTRATION_KEY")
+    APP_URL = os.environ.get("APP_URL")
+
+    REPO_URL = os.environ.get("REPO_URL")
+
+    API_URL = os.environ.get("API_URL")
+
+    TIER_CREDITS = {
+        "base": 200,
+        "starter": 500,
+        "pro": 1500,
+        "studio": 4000,
+        "provider": 500,
+    }
+
+    TIER_PRICES = {
+        "base": 599,
+        "starter": 1499,
+        "pro": 2999,
+        "studio": 5999,
+    }
+
+    TRIAL_CONFIG = {
+        "duration_days": 7,
+        "credits": {
+            "base": 100,
+            "starter": 100,
+            "pro": 100,
+            "studio": 100,
+        },
+        "payment_method": "if_required",
+    }
+
+    @property
+    def TIER_PRICES_EUR(self) -> dict:
+        return {tier: amount / 100 for tier, amount in self.TIER_PRICES.items()}
+
+
+settings = Settings()
+
+STRIPE_PRICE_IDS = {
+    "starter": settings.STRIPE_PRICE_STARTER,
+    "pro": settings.STRIPE_PRICE_PRO,
+    "studio": settings.STRIPE_PRICE_STUDIO,
+}

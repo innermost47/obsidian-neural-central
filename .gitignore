@@ -1,0 +1,10 @@
+.env.prod
+.env.dev
+env
+__pycache__
+obsidian_neural.*
+stripe.exe
+obsidian.json
+*.log
+public/*
+!public/.gitkeep
