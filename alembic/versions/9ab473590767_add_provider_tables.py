@@ -22,65 +22,67 @@ depends_on: Union[str, Sequence[str], None] = None
 def upgrade() -> None:
     """Upgrade schema."""
     conn = op.get_bind()
-    type_exists = conn.execute(
-        sa.text(
-            "SELECT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'emaillogstatus')"
-        )
-    ).scalar()
+    inspector = sa.inspect(conn)
+    existing_tables = inspector.get_table_names()
 
-    if not type_exists:
-        op.execute(
-            "CREATE TYPE emaillogstatus AS ENUM ('PENDING', 'SENT', 'FAILED', 'RETRYING')"
+    def create_enum_if_not_exists(name, values):
+        res = conn.execute(sa.text(f"SELECT EXISTS (SELECT 1 FROM pg_type WHERE typname = '{name}')")).scalar()
+        if not res:
+            op.execute(f"CREATE TYPE {name} AS ENUM ({', '.join([f"'{v}'" for v in values])})")
+
+    create_enum_if_not_exists('emaillogstatus', ['PENDING', 'SENT', 'FAILED', 'RETRYING'])
+    create_enum_if_not_exists('giftsubscriptionstatus', ['PENDING', 'ACTIVE', 'EXPIRED', 'CANCELLED'])
+
+    if "email_logs" not in existing_tables:
+        op.create_table(
+            "email_logs",
+            sa.Column("id", sa.Integer(), nullable=False),
+            sa.Column("recipient_email", sa.String(length=255), nullable=False),
+            sa.Column("subject", sa.String(length=500), nullable=False),
+            sa.Column("body", sa.Text(), nullable=False),
+            sa.Column("email_type", sa.String(length=100), nullable=False),
+            sa.Column(
+                "status",
+                sa.Enum("PENDING", "SENT", "FAILED", "RETRYING", name="emaillogstatus"),
+                nullable=False,
+            ),
+            sa.Column("error_message", sa.Text(), nullable=True),
+            sa.Column("retry_count", sa.Integer(), nullable=True),
+            sa.Column("user_id", sa.Integer(), nullable=True),
+            sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
+            sa.Column("sent_at", sa.DateTime(timezone=True), nullable=True),
+            sa.Column("last_retry_at", sa.DateTime(timezone=True), nullable=True),
+            sa.ForeignKeyConstraint(
+                ["user_id"],
+                ["users.id"],
+            ),
+            sa.PrimaryKeyConstraint("id"),
         )
-    op.create_table(
-        "email_logs",
-        sa.Column("id", sa.Integer(), nullable=False),
-        sa.Column("recipient_email", sa.String(length=255), nullable=False),
-        sa.Column("subject", sa.String(length=500), nullable=False),
-        sa.Column("body", sa.Text(), nullable=False),
-        sa.Column("email_type", sa.String(length=100), nullable=False),
-        sa.Column(
-            "status",
-            sa.Enum("PENDING", "SENT", "FAILED", "RETRYING", name="emaillogstatus"),
-            nullable=False,
-        ),
-        sa.Column("error_message", sa.Text(), nullable=True),
-        sa.Column("retry_count", sa.Integer(), nullable=True),
-        sa.Column("user_id", sa.Integer(), nullable=True),
-        sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
-        sa.Column("sent_at", sa.DateTime(timezone=True), nullable=True),
-        sa.Column("last_retry_at", sa.DateTime(timezone=True), nullable=True),
-        sa.ForeignKeyConstraint(
-            ["user_id"],
-            ["users.id"],
-        ),
-        sa.PrimaryKeyConstraint("id"),
-    )
-    op.create_index(
-        "idx_email_status_created", "email_logs", ["status", "created_at"], unique=False
-    )
-    op.create_index(
-        "idx_email_type_status", "email_logs", ["email_type", "status"], unique=False
-    )
-    op.create_index(
-        op.f("ix_email_logs_created_at"), "email_logs", ["created_at"], unique=False
-    )
-    op.create_index(
-        op.f("ix_email_logs_email_type"), "email_logs", ["email_type"], unique=False
-    )
-    op.create_index(op.f("ix_email_logs_id"), "email_logs", ["id"], unique=False)
-    op.create_index(
-        op.f("ix_email_logs_recipient_email"),
-        "email_logs",
-        ["recipient_email"],
-        unique=False,
-    )
-    op.create_index(
-        op.f("ix_email_logs_status"), "email_logs", ["status"], unique=False
-    )
-    op.create_index(
-        op.f("ix_email_logs_user_id"), "email_logs", ["user_id"], unique=False
-    )
+        op.create_index(
+            "idx_email_status_created", "email_logs", ["status", "created_at"], unique=False
+        )
+        op.create_index(
+            "idx_email_type_status", "email_logs", ["email_type", "status"], unique=False
+        )
+        op.create_index(
+            op.f("ix_email_logs_created_at"), "email_logs", ["created_at"], unique=False
+        )
+        op.create_index(
+            op.f("ix_email_logs_email_type"), "email_logs", ["email_type"], unique=False
+        )
+        op.create_index(op.f("ix_email_logs_id"), "email_logs", ["id"], unique=False)
+        op.create_index(
+            op.f("ix_email_logs_recipient_email"),
+            "email_logs",
+            ["recipient_email"],
+            unique=False,
+        )
+        op.create_index(
+            op.f("ix_email_logs_status"), "email_logs", ["status"], unique=False
+        )
+        op.create_index(
+            op.f("ix_email_logs_user_id"), "email_logs", ["user_id"], unique=False
+        )
     op.create_table(
         "providers",
         sa.Column("id", sa.Integer(), nullable=False),
