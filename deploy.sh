@@ -21,8 +21,6 @@ if ps -p $NEW_PID > /dev/null; then
     echo "Deployment successful (PID: $NEW_PID)"
     echo "Environment: $ENV"
     echo "Port: $PORT"
-    echo "Streaming logs..."
-    tail -f $LOG_FILE
 else
     echo "Deployment failed"
     exit 1
