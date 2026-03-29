@@ -2,6 +2,7 @@ import os
 import sys
 import secrets
 import uuid
+from server.services.stripe_service import StripeService
 from dotenv import load_dotenv
 
 env_file = ".env.dev"
@@ -32,6 +33,13 @@ try:
     existing = db.query(User).filter(User.email == ADMIN_EMAIL).first()
 
     if existing:
+        if not existing.stripe_customer_id:
+            stripe_customer_id = StripeService.create_customer(
+                email=existing.email, user_id=existing.id
+            )
+            existing.stripe_customer_id = stripe_customer_id
+            db.commit()
+            print(f"   Stripe customer created: {stripe_customer_id}")
         if existing.is_admin:
             print(f"ℹ️  {ADMIN_EMAIL} is already an admin")
         else:
@@ -65,6 +73,13 @@ try:
     db.add(user)
     db.commit()
     db.refresh(user)
+
+    stripe_customer_id = StripeService.create_customer(
+        email=user.email, user_id=user.id
+    )
+    user.stripe_customer_id = stripe_customer_id
+    db.commit()
+    print(f"   Stripe customer: {stripe_customer_id}")
 
     print(f"✅ Admin user created: {ADMIN_EMAIL} (id={user.id})")
     print(f"   API key (plain): {raw_api_key}")

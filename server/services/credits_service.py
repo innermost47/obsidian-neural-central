@@ -1,5 +1,6 @@
 from sqlalchemy.orm import Session
 from server.core.database import User, Generation
+from server.config import settings
 
 
 class CreditsService:
@@ -72,7 +73,7 @@ class CreditsService:
         if not user:
             return False
 
-        credits = StripeService.TIER_CREDITS.get(tier, 0)
+        credits = settings.TIER_CREDITS.get(tier, 0)
         user.credits_total = credits
         user.credits_used = 0
         user.subscription_tier = tier

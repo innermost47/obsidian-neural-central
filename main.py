@@ -85,6 +85,7 @@ async def lifespan(app: FastAPI):
             hours=1,
             id="provider_ping",
             replace_existing=True,
+            misfire_grace_time=600,
         )
         provider_scheduler.start()
         asyncio.create_task(ProviderVerificationService.run_forever(SessionLocal))
