@@ -21,19 +21,8 @@ depends_on: Union[str, Sequence[str], None] = None
 
 def upgrade():
     # Add column to users table
-    with op.batch_alter_table("users", schema=None) as batch_op:
-        batch_op.add_column(
-            sa.Column("active_gift_subscription_id", sa.Integer(), nullable=True)
-        )
-        batch_op.create_foreign_key(
-            "fk_users_active_gift",
-            "gift_subscriptions",
-            ["active_gift_subscription_id"],
-            ["id"],
-        )
+    pass
 
 
 def downgrade():
-    with op.batch_alter_table("users", schema=None) as batch_op:
-        batch_op.drop_constraint("fk_users_active_gift", type_="foreignkey")
-        batch_op.drop_column("active_gift_subscription_id")
+    pass
