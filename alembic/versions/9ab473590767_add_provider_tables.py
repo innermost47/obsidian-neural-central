@@ -26,12 +26,19 @@ def upgrade() -> None:
     existing_tables = inspector.get_table_names()
 
     def create_enum_if_not_exists(name, values):
-        res = conn.execute(sa.text(f"SELECT EXISTS (SELECT 1 FROM pg_type WHERE typname = '{name}')")).scalar()
+        res = conn.execute(
+            sa.text(f"SELECT EXISTS (SELECT 1 FROM pg_type WHERE typname = '{name}')")
+        ).scalar()
         if not res:
-            op.execute(f"CREATE TYPE {name} AS ENUM ({', '.join([f"'{v}'" for v in values])})")
+            formatted_values = ", ".join([f"'{v}'" for v in values])
+            op.execute(f"CREATE TYPE {name} AS ENUM ({formatted_values})")
 
-    create_enum_if_not_exists('emaillogstatus', ['PENDING', 'SENT', 'FAILED', 'RETRYING'])
-    create_enum_if_not_exists('giftsubscriptionstatus', ['PENDING', 'ACTIVE', 'EXPIRED', 'CANCELLED'])
+    create_enum_if_not_exists(
+        "emaillogstatus", ["PENDING", "SENT", "FAILED", "RETRYING"]
+    )
+    create_enum_if_not_exists(
+        "giftsubscriptionstatus", ["PENDING", "ACTIVE", "EXPIRED", "CANCELLED"]
+    )
 
     if "email_logs" not in existing_tables:
         op.create_table(
@@ -59,10 +66,16 @@ def upgrade() -> None:
             sa.PrimaryKeyConstraint("id"),
         )
         op.create_index(
-            "idx_email_status_created", "email_logs", ["status", "created_at"], unique=False
+            "idx_email_status_created",
+            "email_logs",
+            ["status", "created_at"],
+            unique=False,
         )
         op.create_index(
-            "idx_email_type_status", "email_logs", ["email_type", "status"], unique=False
+            "idx_email_type_status",
+            "email_logs",
+            ["email_type", "status"],
+            unique=False,
         )
         op.create_index(
             op.f("ix_email_logs_created_at"), "email_logs", ["created_at"], unique=False
