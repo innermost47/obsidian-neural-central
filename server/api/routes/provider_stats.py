@@ -4,7 +4,7 @@ from sqlalchemy import func
 from datetime import datetime, timezone
 from calendar import monthrange
 
-from server.core.database import get_db, User, Provider, Generation
+from server.core.database import get_db, User, Provider, ProviderJob
 from server.api.dependencies import get_verified_user
 from server.config import settings
 
@@ -35,29 +35,13 @@ def get_my_provider_stats(
     days_elapsed = now.day
 
     global_generations_month = (
-        db.query(func.count(Generation.id))
+        db.query(func.count(ProviderJob.id))
         .filter(
-            func.extract("year", Generation.created_at) == year,
-            func.extract("month", Generation.created_at) == month,
+            ProviderJob.status == "done",
+            ProviderJob.used_fallback == False,
+            func.extract("year", ProviderJob.created_at) == year,
+            func.extract("month", ProviderJob.created_at) == month,
         )
-        .scalar()
-        or 0
-    )
-
-    my_generations_month = (
-        db.query(func.count(Generation.id))
-        .filter(
-            Generation.user_id == provider.user.id,
-            func.extract("year", Generation.created_at) == year,
-            func.extract("month", Generation.created_at) == month,
-        )
-        .scalar()
-        or 0
-    )
-
-    my_generations_total = (
-        db.query(func.count(Generation.id))
-        .filter(Generation.user_id == provider.user.id)
         .scalar()
         or 0
     )
