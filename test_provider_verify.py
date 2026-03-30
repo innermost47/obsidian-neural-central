@@ -12,7 +12,6 @@ import librosa
 import numpy as np
 from scipy.spatial.distance import cosine
 
-DEFAULT_URL = os.getenv("PROVIDER_URL")
 DEFAULT_RUNS = 3
 DEFAULT_DURATION = 5
 DEFAULT_PROMPT = "steady kick drum loop 120bpm"
@@ -417,9 +416,7 @@ Examples:
   python test_provider_verify.py --save-wavs --output ./test_output
         """,
     )
-    parser.add_argument(
-        "--url", default=DEFAULT_URL, help=f"Provider URL (default: {DEFAULT_URL})"
-    )
+    parser.add_argument("--url", help=f"Provider URL", required=True)
     parser.add_argument(
         "--runs",
         type=int,
