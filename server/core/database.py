@@ -310,6 +310,30 @@ class ProviderVerification(Base):
     provider = relationship("Provider", back_populates="verifications")
 
 
+class OwnershipLog(Base):
+    __tablename__ = "ownership_logs"
+
+    id = Column(Integer, primary_key=True, index=True)
+    public_user_id = Column(String(36), nullable=False, index=True)
+    provider_name = Column(String(255), nullable=False)
+    prompt_hash = Column(String(8), nullable=False)
+    duration = Column(Float, nullable=False)
+    audio_content_hash = Column(String(64), nullable=False)
+    generated_at = Column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        nullable=False,
+        index=True,
+    )
+
+    __table_args__ = (
+        Index("idx_ownership_user_date", "public_user_id", "generated_at"),
+    )
+
+    def __repr__(self):
+        return f"<OwnershipLog {self.public_user_id} - {self.audio_content_hash[:8]}>"
+
+
 def get_db():
     db = SessionLocal()
     try:

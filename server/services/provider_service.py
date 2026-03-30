@@ -2,6 +2,7 @@ import httpx
 import asyncio
 import tempfile
 import os
+import random
 import hashlib
 import subprocess
 import secrets
@@ -12,7 +13,7 @@ from sqlalchemy.orm import Session
 from collections import defaultdict
 from server.services.fal_service import FalService
 from server.services.credits_service import CreditsService
-from server.core.database import Provider, ProviderJob
+from server.core.database import Provider, ProviderJob, OwnershipLog
 
 
 PING_TIMEOUT = 5.0
@@ -35,39 +36,30 @@ class ProviderService:
         provider_name: str,
         prompt: str,
         duration: float,
-        public_ownership_path: str = "public/ownership.json",
+        file_hash: str,
+        db: Session,
     ):
-        import json
+        import hashlib
         from datetime import datetime, timezone
 
-        entry = {
-            "public_user_id": public_user_id,
-            "provider": provider_name,
-            "prompt_hash": hash(prompt) & 0xFFFFFFFF,
-            "duration": round(duration, 2),
-            "generated_at": datetime.now(timezone.utc).isoformat(),
-        }
-
+        prompt_hash = hashlib.md5(prompt.encode()).hexdigest()[:8]
         try:
-            os.makedirs(os.path.dirname(public_ownership_path), exist_ok=True)
-
-            records = []
-            if os.path.exists(public_ownership_path):
-                with open(public_ownership_path, "r", encoding="utf-8") as f:
-                    records = json.load(f)
-
-            records.append(entry)
-
-            if len(records) > 10000:
-                records = records[-10000:]
-
-            with open(public_ownership_path, "w", encoding="utf-8") as f:
-                json.dump(records, f, indent=2)
-
-            print(f"📝 Ownership written for user {public_user_id} via {provider_name}")
-
+            entry = OwnershipLog(
+                public_user_id=public_user_id,
+                provider_name=provider_name,
+                prompt_hash=prompt_hash,
+                duration=round(duration, 2),
+                audio_content_hash=file_hash,
+                generated_at=datetime.now(timezone.utc),
+            )
+            db.add(entry)
+            db.commit()
+            print(f"📝 Ownership logged for user {public_user_id}")
         except Exception as e:
-            print(f"⚠️  Failed to write ownership JSON: {e}")
+            db.rollback()
+            print(f"⚠️ Failed to write ownership: {e}")
+        finally:
+            db.close()
 
     @staticmethod
     async def _ping_provider(url: str) -> Optional[Dict]:
@@ -89,7 +81,7 @@ class ProviderService:
             .filter(Provider.is_active == True, Provider.is_banned == False)
             .all()
         )
-
+        random.shuffle(providers)
         if not providers:
             print("📭 No active providers in pool")
             return None
@@ -385,6 +377,7 @@ class ProviderService:
                             is_valid = ProviderService._validate_wav_ffmpeg(wav_bytes)
 
                             if is_valid:
+                                file_hash = hashlib.sha256(wav_bytes).hexdigest()
                                 p = (
                                     db.query(ProviderModel)
                                     .filter(ProviderModel.id == provider_id)
@@ -406,6 +399,8 @@ class ProviderService:
                                     provider_name=provider["name"],
                                     prompt=prompt,
                                     duration=estimated_duration,
+                                    file_hash=file_hash,
+                                    db=db,
                                 )
 
                                 print(
