@@ -306,7 +306,7 @@ DIVERGENT_PAIRS = [
     ),
 ]
 
-DIVERGENCE_THRESHOLD = 0.97
+DIVERGENCE_THRESHOLD = 0.98
 
 
 async def test_divergence(
