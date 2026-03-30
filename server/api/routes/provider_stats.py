@@ -108,10 +108,6 @@ def get_my_provider_stats(
             "billable_jobs": provider.billable_jobs or 0,
             "last_seen": provider.last_seen.isoformat() if provider.last_seen else None,
         },
-        "my_generations": {
-            "this_month": my_generations_month,
-            "all_time": my_generations_total,
-        },
         "network": {
             "global_generations_this_month": global_generations_month,
             "active_providers": active_providers_count,
