@@ -9,3 +9,4 @@ obsidian.json
 logs/*
 !logs/.gitkeep
 output.log
+run_cron.sh
