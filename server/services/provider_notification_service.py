@@ -84,7 +84,7 @@ class ProviderNotificationService:
         ''')}
         <p style="color:#cccccc;font-size:12px;margin:16px 0 0;line-height:1.6;">
           Revenue is split monthly among all active providers.
-          Details at <a href="{settings.APP_URL}/public/finances.json" style="color:#b8605c;text-decoration:none;">{settings.API_URL}/public/finances.json</a>
+          Details at <a href="{settings.APP_URL}/api/v1/public/finances" style="color:#b8605c;text-decoration:none;">{settings.API_URL}/public/finances.json</a>
         </p>
         """
         return _send_to_all_providers(

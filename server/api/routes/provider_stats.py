@@ -69,7 +69,7 @@ def get_my_provider_stats(
         or 1
     )
 
-    tiers = ["free", "starter", "pro", "studio"]
+    tiers = list(settings.TIER_PRICES.keys())
     users_by_tier = {}
     for tier in tiers:
         count = (
@@ -84,18 +84,19 @@ def get_my_provider_stats(
         )
         users_by_tier[tier] = count
 
-    paying_users = sum(users_by_tier[t] for t in ["starter", "pro", "studio"])
+    paying_tiers = [t for t in settings.TIER_PRICES]
 
+    paying_users = sum(users_by_tier[t] for t in paying_tiers)
     monthly_revenue = sum(
-        users_by_tier[tier] * (settings.TIER_PRICES.get(tier, 0) / 100)
-        for tier in ["starter", "pro", "studio"]
+        users_by_tier[tier] * (settings.TIER_PRICES[tier] / 100)
+        for tier in paying_tiers
     )
     providers_pool = monthly_revenue * 0.85
     my_estimated_rev = (
         (providers_pool / active_providers_count) if active_providers_count > 0 else 0
     )
 
-    finances_url = f"{settings.APP_URL}/public/finances.json"
+    finances_url = f"{settings.APP_URL}/api/v1/public/finances"
 
     return {
         "provider": {

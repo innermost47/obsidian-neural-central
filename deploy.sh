@@ -4,6 +4,8 @@ PORT=8001
 APP_NAME="main.py"
 LOG_FILE="output.log"
 
+source env/bin/activate
+
 export ENV=prod
 
 PID=$(lsof -t -i:$PORT)
