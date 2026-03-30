@@ -268,7 +268,31 @@ Returns the generation ownership log, paginated.
 
 ### Cron Tasks
 
-All tasks run via `cron_daily.py --task <name>`. Logs go to `/path/to/logs/cron.log`.
+All tasks run via a wrapper script that ensures the correct environment is loaded.
+
+**1. Create the wrapper script** `/path/to/project/run_cron.sh`:
+
+```bash
+#!/bin/bash
+export ENV=prod
+cd /path/to/project
+/path/to/project/venv/bin/python /path/to/project/cron_daily.py "$@"
+```
+
+```bash
+chmod +x /path/to/project/run_cron.sh
+```
+
+**2. Add to crontab** (`crontab -e`):
+
+```cron
+0 10 * * * /path/to/project/run_cron.sh --task followup_emails >> /path/to/logs/cron.log 2>&1
+0 * * * * /path/to/project/run_cron.sh --task expiration_warnings >> /path/to/logs/cron.log 2>&1
+0 0 * * * /path/to/project/run_cron.sh --task expire_gifts >> /path/to/logs/cron.log 2>&1
+5 0 * * * /path/to/project/run_cron.sh --task refill_gifts >> /path/to/logs/cron.log 2>&1
+10 0 1 * * /path/to/project/run_cron.sh --task refill_provider_credits >> /path/to/logs/cron.log 2>&1
+0 6 1 * * /path/to/project/run_cron.sh --task redistribution >> /path/to/logs/cron.log 2>&1
+```
 
 | Task                      | Schedule              | Description                                             |
 | ------------------------- | --------------------- | ------------------------------------------------------- |
