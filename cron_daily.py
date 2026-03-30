@@ -1,7 +1,11 @@
-import sys
+from pathlib import Path
+from dotenv import load_dotenv
 import os
+import sys
 
-os.environ.setdefault("ENV", "prod")
+ENV = os.getenv("ENV", "prod")
+env_file = Path(__file__).resolve().parent.parent / f".env.{ENV}"
+load_dotenv(dotenv_path=env_file, override=True)
 
 import argparse
 from datetime import datetime, timedelta

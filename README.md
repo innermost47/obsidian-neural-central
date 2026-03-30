@@ -283,20 +283,20 @@ All tasks run via `cron_daily.py --task <name>`. Logs go to `/path/to/logs/cron.
 
 ```cron
 # Followup emails — daily at 10:00
-0 10 * * * /path/to/venv/bin/python /path/to/server/cron_daily.py --task followup_emails >> /path/to/logs/cron.log 2>&1
+0 10 * * * ENV=prod /path/to/venv/bin/python /path/to/server/cron_daily.py --task followup_emails >> /path/to/logs/cron.log 2>&1
 
 # Expiration warnings — every hour
-0 * * * * /path/to/venv/bin/python /path/to/server/cron_daily.py --task expiration_warnings >> /path/to/logs/cron.log 2>&1
+0 * * * * ENV=prod /path/to/venv/bin/python /path/to/server/cron_daily.py --task expiration_warnings >> /path/to/logs/cron.log 2>&1
 
 # Expire gifts — midnight
-0 0 * * * /path/to/venv/bin/python /path/to/server/cron_daily.py --task expire_gifts >> /path/to/logs/cron.log 2>&1
+0 0 * * * ENV=prod /path/to/venv/bin/python /path/to/server/cron_daily.py --task expire_gifts >> /path/to/logs/cron.log 2>&1
 
 # Refill gift credits — 00:05
-5 0 * * * /path/to/venv/bin/python /path/to/server/cron_daily.py --task refill_gifts >> /path/to/logs/cron.log 2>&1
+5 0 * * * ENV=prod /path/to/venv/bin/python /path/to/server/cron_daily.py --task refill_gifts >> /path/to/logs/cron.log 2>&1
 
 # Refill provider credits — 1st of month, 00:10
-10 0 1 * * /path/to/venv/bin/python /path/to/server/cron_daily.py --task refill_provider_credits >> /path/to/logs/cron.log 2>&1
+10 0 1 * * ENV=prod /path/to/venv/bin/python /path/to/server/cron_daily.py --task refill_provider_credits >> /path/to/logs/cron.log 2>&1
 
 # Monthly redistribution — 1st of month, 06:00
-0 6 1 * * /path/to/venv/bin/python /path/to/server/cron_daily.py --task redistribution >> /path/to/logs/cron.log 2>&1
+0 6 1 * * ENV=prod /path/to/venv/bin/python /path/to/server/cron_daily.py --task redistribution >> /path/to/logs/cron.log 2>&1
 ```
