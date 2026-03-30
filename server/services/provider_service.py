@@ -295,7 +295,7 @@ class ProviderService:
                 await queue.put((prompt, duration, public_user_id, future, job.id))
 
                 if not _provider_workers[provider["id"]]:
-                    asyncio.create_task(ProviderService._process_queue(provider, db))
+                    asyncio.create_task(ProviderService._process_queue(provider))
 
                 try:
                     result = await asyncio.wait_for(future, timeout=180.0)
@@ -342,7 +342,9 @@ class ProviderService:
             }
 
     @staticmethod
-    async def _process_queue(provider: dict, db: Session):
+    async def _process_queue(provider: dict):
+        from server.core.database import SessionLocal
+
         provider_id = provider["id"]
         _provider_workers[provider_id] = True
 
@@ -354,6 +356,7 @@ class ProviderService:
                 prompt, duration, public_user_id, future, job_id = await queue.get()
 
                 async with lock:
+                    db = SessionLocal()
                     try:
                         from server.core.database import (
                             ProviderJob,
@@ -479,6 +482,7 @@ class ProviderService:
                         if not future.done():
                             future.set_exception(e)
                     finally:
+                        db.close()
                         queue.task_done()
 
         finally:
