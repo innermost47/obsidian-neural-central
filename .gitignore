@@ -6,6 +6,6 @@ obsidian_neural.*
 stripe.exe
 obsidian.json
 *.log
-public/*
-!public/.gitkeep
+logs/*
+!logs/.gitkeep
 output.log

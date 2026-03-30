@@ -1,10 +1,8 @@
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.staticfiles import StaticFiles
 import uvicorn
 import logging
-import os
 import asyncio
 from server.config import settings
 from server.core.database import init_db, SessionLocal
@@ -28,35 +26,10 @@ from server.api.routes import (
     provider_stats,
     provider_heartbeat,
 )
-import json
-from pathlib import Path
 from server.services.provider_verification_service import ProviderVerificationService
 
 
 logger = logging.getLogger(__name__)
-
-
-finances_path = Path("public/finances.json")
-if not finances_path.exists():
-    finances_path.write_text(
-        json.dumps(
-            {
-                "history": [],
-                "current_month": {
-                    "platform_revenue_eur": 0.0,
-                    "providers_pool_eur": 0.0,
-                    "active_providers": 0,
-                    "paying_subscribers": 0,
-                    "period": "",
-                },
-                "platform_fee_pct": 15,
-                "providers_share_pct": 85,
-                "last_updated": None,
-            },
-            indent=2,
-        )
-    )
-    logger.info("✅ finances.json initialized")
 
 
 async def run_provider_ping():
@@ -120,9 +93,6 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
-os.makedirs("public", exist_ok=True)
-app.mount("/public", StaticFiles(directory="public"), name="public")
 
 app.include_router(auth.router, prefix="/api/v1")
 app.include_router(generation.router, prefix="/api/v1")

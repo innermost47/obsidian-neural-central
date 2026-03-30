@@ -318,12 +318,74 @@ def refill_provider_credits():
         db.close()
 
 
+def compute_and_redistribute():
+    import asyncio
+    import stripe
+    from server.config import settings
+    from server.services.provider_ping_service import ProviderPingService
+
+    db = SessionLocal()
+    now = datetime.utcnow()
+    month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    last_month_end = month_start
+    last_month_start = (month_start - timedelta(days=1)).replace(day=1)
+
+    try:
+        log(f"Starting redistribution for {last_month_start.strftime('%Y-%m')}...")
+        stripe.api_key = settings.STRIPE_SECRET_KEY
+
+        total_cents = 0
+        has_more = True
+        starting_after = None
+
+        while has_more:
+            params = {
+                "created": {
+                    "gte": int(last_month_start.timestamp()),
+                    "lt": int(last_month_end.timestamp()),
+                },
+                "limit": 100,
+            }
+            if starting_after:
+                params["starting_after"] = starting_after
+
+            charges = stripe.Charge.list(**params)
+            for charge in charges.data:
+                if charge.status == "succeeded" and not charge.refunded:
+                    total_cents += charge.amount
+
+            has_more = charges.has_more
+            if has_more:
+                starting_after = charges.data[-1].id
+
+        log(
+            f"Stripe revenue for {last_month_start.strftime('%Y-%m')}: {total_cents/100:.2f}€"
+        )
+
+        report = asyncio.run(
+            ProviderPingService.compute_monthly_redistribution(
+                db=db,
+                month_revenue_cents=total_cents,
+                month_start=last_month_start,
+                dry_run=False,
+            )
+        )
+        log(f"✅ Redistribution done — {len(report['transfers'])} transfers")
+
+    except Exception as e:
+        log(f"❌ Error in redistribution task: {e}")
+        db.rollback()
+    finally:
+        db.close()
+
+
 TASKS = {
     "followup_emails": check_and_send_followup_emails,
     "expiration_warnings": send_gift_expiration_warnings,
     "expire_gifts": check_and_expire_gifts,
     "refill_gifts": refill_gift_subscription_credits,
     "refill_provider_credits": refill_provider_credits,
+    "redistribution": compute_and_redistribute,
 }
 
 if __name__ == "__main__":

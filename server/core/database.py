@@ -334,6 +334,29 @@ class OwnershipLog(Base):
         return f"<OwnershipLog {self.public_user_id} - {self.audio_content_hash[:8]}>"
 
 
+class FinanceReport(Base):
+    __tablename__ = "finance_reports"
+
+    id = Column(Integer, primary_key=True, index=True)
+    month = Column(String(7), nullable=False, unique=True, index=True)  # "2026-03"
+    total_revenue_eur = Column(Float, nullable=False)
+    platform_fee_pct = Column(Float, nullable=False)
+    platform_fee_eur = Column(Float, nullable=False)
+    distributable_eur = Column(Float, nullable=False)
+    eligible_providers = Column(Integer, nullable=False)
+    share_per_provider_eur = Column(Float, nullable=False)
+    remainder_eur = Column(Float, nullable=False)
+    transfers = Column(JSON, nullable=False)  # liste sérialisée
+    published_at = Column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        nullable=False,
+    )
+
+    def __repr__(self):
+        return f"<FinanceReport {self.month} — {self.total_revenue_eur}€>"
+
+
 def get_db():
     db = SessionLocal()
     try:

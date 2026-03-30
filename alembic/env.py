@@ -5,10 +5,8 @@ from alembic import context
 import os
 import sys
 
-# Add your project directory to the Python path
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
-# Import your Base and models
 from server.core.database import Base
 from server.core.database import (
     BroadcastEmail,
@@ -24,19 +22,16 @@ from server.core.database import (
     ProviderPing,
     ProviderVerification,
     OwnershipLog,
+    FinanceReport,
 )
 
-# this is the Alembic Config object
 config = context.config
 
-# Interpret the config file for Python logging.
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
-# Set target metadata for 'autogenerate' support
 target_metadata = Base.metadata
 
-# Optional: Override sqlalchemy.url from environment variable
 from server.config import settings
 
 if settings.DATABASE_URL:
@@ -44,17 +39,6 @@ if settings.DATABASE_URL:
 
 
 def run_migrations_offline() -> None:
-    """Run migrations in 'offline' mode.
-
-    This configures the context with just a URL
-    and not an Engine, though an Engine is acceptable
-    here as well.  By skipping the Engine creation
-    we don't even need a DBAPI to be available.
-
-    Calls to context.execute() here emit the given string to the
-    script output.
-
-    """
     url = config.get_main_option("sqlalchemy.url")
     context.configure(
         url=url,
@@ -68,12 +52,6 @@ def run_migrations_offline() -> None:
 
 
 def run_migrations_online() -> None:
-    """Run migrations in 'online' mode.
-
-    In this scenario we need to create an Engine
-    and associate a connection with the context.
-
-    """
     connectable = engine_from_config(
         config.get_section(config.config_ini_section, {}),
         prefix="sqlalchemy.",

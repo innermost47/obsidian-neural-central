@@ -265,7 +265,7 @@ class ProviderPingService:
             "dry_run": dry_run,
         }
 
-        ProviderPingService._write_public_finance_report(report)
+        ProviderPingService._write_public_finance_report(report=report, db=db)
 
         return report
 
@@ -303,51 +303,63 @@ class ProviderPingService:
             return None
 
     @staticmethod
-    def _write_public_finance_report(report: Dict):
-        public_report = {
-            "month": report["month"],
-            "total_revenue_eur": round(report["month_revenue_cents"] / 100, 2),
-            "platform_fee_pct": report["platform_fee_pct"],
-            "platform_fee_eur": round(report["platform_fee_cents"] / 100, 2),
-            "distributable_eur": round(report["distributable_cents"] / 100, 2),
-            "eligible_providers": report["eligible_count"],
-            "share_per_provider_eur": round(
-                report["share_per_provider_cents"] / 100, 2
-            ),
-            "remainder_eur": round(report["remainder_cents"] / 100, 2),
-            "transfers": [
-                {
-                    "provider_name": t["provider_name"],
-                    "amount_eur": round(t["amount_cents"] / 100, 2),
-                    "uptime_score_pct": round(t["uptime_score"] * 100, 1),
-                    "billable_jobs": t["billable_jobs"],
-                    "status": t["status"],
-                }
-                for t in report["transfers"]
-            ],
-            "published_at": datetime.now(timezone.utc).isoformat(),
-        }
+    def _write_public_finance_report(report: Dict, db: Session):
+        from server.core.database import FinanceReport
+
+        public_transfers = [
+            {
+                "provider_name": t["provider_name"],
+                "amount_eur": round(t["amount_cents"] / 100, 2),
+                "uptime_score_pct": round(t["uptime_score"] * 100, 1),
+                "billable_jobs": t["billable_jobs"],
+                "status": t["status"],
+            }
+            for t in report["transfers"]
+        ]
 
         try:
-            path = "public/finances.json"
-            os.makedirs("public", exist_ok=True)
-
-            history = []
-            if os.path.exists(path):
-                with open(path, "r", encoding="utf-8") as f:
-                    history = json.load(f)
-
-            history = [h for h in history if h.get("month") != public_report["month"]]
-            history.append(public_report)
-            history = sorted(history, key=lambda x: x["month"])[-24:]
-
-            with open(path, "w", encoding="utf-8") as f:
-                json.dump(history, f, indent=2)
-
-            print(f"📊 Public finance report written for {report['month']}")
-
+            existing = (
+                db.query(FinanceReport)
+                .filter(FinanceReport.month == report["month"])
+                .first()
+            )
+            if existing:
+                existing.total_revenue_eur = round(
+                    report["month_revenue_cents"] / 100, 2
+                )
+                existing.platform_fee_pct = report["platform_fee_pct"]
+                existing.platform_fee_eur = round(report["platform_fee_cents"] / 100, 2)
+                existing.distributable_eur = round(
+                    report["distributable_cents"] / 100, 2
+                )
+                existing.eligible_providers = report["eligible_count"]
+                existing.share_per_provider_eur = round(
+                    report["share_per_provider_cents"] / 100, 2
+                )
+                existing.remainder_eur = round(report["remainder_cents"] / 100, 2)
+                existing.transfers = public_transfers
+                existing.published_at = datetime.now(timezone.utc)
+            else:
+                entry = FinanceReport(
+                    month=report["month"],
+                    total_revenue_eur=round(report["month_revenue_cents"] / 100, 2),
+                    platform_fee_pct=report["platform_fee_pct"],
+                    platform_fee_eur=round(report["platform_fee_cents"] / 100, 2),
+                    distributable_eur=round(report["distributable_cents"] / 100, 2),
+                    eligible_providers=report["eligible_count"],
+                    share_per_provider_eur=round(
+                        report["share_per_provider_cents"] / 100, 2
+                    ),
+                    remainder_eur=round(report["remainder_cents"] / 100, 2),
+                    transfers=public_transfers,
+                    published_at=datetime.now(timezone.utc),
+                )
+                db.add(entry)
+            db.commit()
+            print(f"📊 Public finance report saved for {report['month']}")
         except Exception as e:
-            print(f"⚠️  Failed to write public finance report: {e}")
+            db.rollback()
+            print(f"⚠️  Failed to save public finance report: {e}")
 
     @staticmethod
     def get_ping_stats(db: Session, provider_id: int, days: int = 30) -> Dict:

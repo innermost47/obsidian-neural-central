@@ -2,7 +2,7 @@ from typing import Optional
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 from datetime import datetime, timezone
-from server.core.database import get_db, OwnershipLog
+from server.core.database import get_db, OwnershipLog, FinanceReport
 from sqlalchemy import desc
 
 
@@ -64,5 +64,44 @@ def get_ownership_logs(
                 "audio_content_hash": log.audio_content_hash,
             }
             for log in logs
+        ],
+    }
+
+
+@router.get("/finances")
+def get_finance_reports(
+    db: Session = Depends(get_db),
+    page: int = Query(default=1, ge=1),
+    limit: int = Query(default=24, le=100),
+    month: Optional[str] = Query(
+        default=None, description="Filter by month, e.g. 2026-03"
+    ),
+):
+    query = db.query(FinanceReport).order_by(desc(FinanceReport.month))
+
+    if month:
+        query = query.filter(FinanceReport.month == month)
+
+    total = query.count()
+    reports = query.offset((page - 1) * limit).limit(limit).all()
+
+    return {
+        "total": total,
+        "page": page,
+        "limit": limit,
+        "reports": [
+            {
+                "month": r.month,
+                "total_revenue_eur": r.total_revenue_eur,
+                "platform_fee_pct": r.platform_fee_pct,
+                "platform_fee_eur": r.platform_fee_eur,
+                "distributable_eur": r.distributable_eur,
+                "eligible_providers": r.eligible_providers,
+                "share_per_provider_eur": r.share_per_provider_eur,
+                "remainder_eur": r.remainder_eur,
+                "transfers": r.transfers,
+                "published_at": r.published_at.isoformat(),
+            }
+            for r in reports
         ],
     }

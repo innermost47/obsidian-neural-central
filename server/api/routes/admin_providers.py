@@ -94,28 +94,6 @@ async def add_provider(
     }
 
 
-@router.post("/redistribution/compute")
-async def compute_redistribution(
-    request: RedistributionRequest,
-    db: Session = Depends(get_db),
-    _: User = Depends(get_admin_user),
-):
-    month_start = None
-    if request.month_start:
-        month_start = datetime.fromisoformat(request.month_start).replace(
-            tzinfo=timezone.utc
-        )
-
-    report = await ProviderPingService.compute_monthly_redistribution(
-        db=db,
-        month_revenue_cents=request.month_revenue_cents,
-        month_start=month_start,
-        dry_run=request.dry_run,
-    )
-
-    return report
-
-
 @router.get("/{provider_id}")
 async def get_provider(
     provider_id: int,
