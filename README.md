@@ -2,11 +2,13 @@
 
 ### Related Repositories
 
-| Repository                                                                          | Description                                  |
-| ----------------------------------------------------------------------------------- | -------------------------------------------- |
-| [obsidian-neural-provider](https://github.com/innermost47/obsidian-neural-provider) | Provider kit — run a GPU node on the network |
-| [obsidian-neural-frontend](https://github.com/innermost47/obsidian-neural-frontend) | Storefront & dashboard                       |
-| [ai-dj](https://github.com/innermost47/ai-dj)                                       | VST3/AU plugin (client)                      |
+| Repository                                                                                           | Description                                  |
+| ---------------------------------------------------------------------------------------------------- | -------------------------------------------- |
+| **[obsidian-neural-central](https://github.com/innermost47/obsidian-neural-central)** ← you are here | Central inference server                     |
+| [obsidian-neural-provider](https://github.com/innermost47/obsidian-neural-provider)                  | Provider kit — run a GPU node on the network |
+| [obsidian-neural-frontend](https://github.com/innermost47/obsidian-neural-frontend)                  | Storefront & dashboard                       |
+| [obsidian-neural-controller](https://github.com/innermost47/obsidian-neural-controller)              | Mobile MIDI controller app                   |
+| [ai-dj](https://github.com/innermost47/ai-dj)                                                        | VST3/AU plugin (client)                      |
 
 ---
 
