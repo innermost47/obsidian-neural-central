@@ -996,3 +996,114 @@ class EmailService:
             email_type="admin_report",
             db=db,
         )
+
+    @staticmethod
+    def send_day2_promo_reminder(
+        email: str, user_id: int = None, db: Session = None
+    ) -> bool:
+        unsub = (
+            EmailService._get_unsubscribe_token(user_id, db) if (db and user_id) else ""
+        )
+
+        content = f"""
+        {section_title("Your free month is waiting")}
+        <h1 style="color:#1a1a1a;font-size:24px;font-weight:700;margin:0 0 16px;">
+          You joined 2 days ago — have you tried it yet?
+        </h1>
+        <p style="color:#4a4a4a;font-size:15px;line-height:1.7;margin:0 0 24px;">
+          Your account is ready. And there's still a 100% OFF code with your name on it.
+        </p>
+
+        {section_title("One free month — pick your plan")}
+        <table cellpadding="0" cellspacing="0" border="0" width="100%" style="margin:0 0 24px;">
+          <tr><td style="padding:8px 0;color:#4a4a4a;font-size:14px;line-height:1.6;">
+            <span style="display:inline-block;background:#b8605c;color:white;border-radius:4px;padding:2px 8px;font-size:12px;font-weight:700;margin-right:10px;">Starter</span>
+            500 credits/month &mdash; <strong>FREE</strong> <span style="color:#888;font-size:13px;">(save €14.99)</span>
+          </td></tr>
+          <tr><td style="padding:8px 0;color:#4a4a4a;font-size:14px;line-height:1.6;">
+            <span style="display:inline-block;background:#b8605c;color:white;border-radius:4px;padding:2px 8px;font-size:12px;font-weight:700;margin-right:10px;">Pro</span>
+            1500 credits/month &mdash; <strong>FREE</strong> <span style="color:#888;font-size:13px;">(save €29.99)</span>
+          </td></tr>
+          <tr><td style="padding:8px 0;color:#4a4a4a;font-size:14px;line-height:1.6;">
+            <span style="display:inline-block;background:#b8605c;color:white;border-radius:4px;padding:2px 8px;font-size:12px;font-weight:700;margin-right:10px;">Studio</span>
+            4000 credits/month &mdash; <strong>FREE</strong> <span style="color:#888;font-size:13px;">(save €59.99)</span>
+          </td></tr>
+        </table>
+
+        {info_box(f'''
+          <table cellpadding="0" cellspacing="0" border="0" width="100%">
+            {stat_row("Code", '<code style="font-family:Courier Prime,monospace;color:#b8605c;font-size:16px;font-weight:700;">OBSIDIAN100</code>')}
+          </table>
+        ''')}
+
+        {btn_primary("Claim my free month →", f"{settings.FRONTEND_URL}/pricing.html")}
+
+        <p style="color:#4a4a4a;font-size:13px;margin:16px 0 0;line-height:1.6;">
+          ✓ Cancel anytime &nbsp;&nbsp; ✓ All premium features &nbsp;&nbsp; ✓ Unlimited real-time generation
+        </p>
+        <p style="color:#4a4a4a;font-size:14px;margin:24px 0 0;line-height:1.6;">
+          Questions? Just reply &mdash; I'll get back to you directly.
+        </p>
+        <p style="color:#4a4a4a;font-size:14px;margin:8px 0 0;">— Anthony, creator of OBSIDIAN Neural</p>
+        """
+
+        return EmailService._send_email(
+            email,
+            "⏰ Your 100% OFF code is waiting — OBSIDIAN100",
+            base_template(
+                content,
+                preheader="You joined 2 days ago. Your free month is still available — code OBSIDIAN100.",
+                unsubscribe_token=unsub,
+            ),
+            email_type="day2_promo",
+            user_id=user_id,
+            db=db,
+        )
+
+    @staticmethod
+    def send_day7_final_promo_reminder(
+        email: str, user_id: int = None, db: Session = None
+    ) -> bool:
+        unsub = (
+            EmailService._get_unsubscribe_token(user_id, db) if (db and user_id) else ""
+        )
+
+        content = f"""
+        {section_title("Last chance")}
+        <h1 style="color:#1a1a1a;font-size:24px;font-weight:700;margin:0 0 16px;">
+          One week in — don't miss your free month.
+        </h1>
+        <p style="color:#4a4a4a;font-size:15px;line-height:1.7;margin:0 0 24px;">
+          This is the last reminder. After this, the code is gone.
+        </p>
+
+        {info_box(f'''
+          <table cellpadding="0" cellspacing="0" border="0" width="100%">
+            {stat_row("Code", '<code style="font-family:Courier Prime,monospace;color:#b8605c;font-size:16px;font-weight:700;">OBSIDIAN100</code>')}
+          </table>
+        ''')}
+
+        {btn_primary("Claim my free month →", f"{settings.FRONTEND_URL}/pricing.html")}
+        {btn_secondary("See all plans", f"{settings.FRONTEND_URL}/pricing.html")}
+
+        <p style="color:#4a4a4a;font-size:13px;margin:16px 0 0;line-height:1.6;">
+          ✓ Generate unlimited samples &nbsp;&nbsp; ✓ All premium features &nbsp;&nbsp; ✓ Cancel anytime
+        </p>
+        <p style="color:#4a4a4a;font-size:14px;margin:24px 0 0;line-height:1.6;">
+          Still hesitating? Reply with your questions — I read every message.
+        </p>
+        <p style="color:#4a4a4a;font-size:14px;margin:8px 0 0;">— Anthony, creator of OBSIDIAN Neural</p>
+        """
+
+        return EmailService._send_email(
+            email,
+            "🔥 Last reminder — your 100% OFF code is still waiting",
+            base_template(
+                content,
+                preheader="Final reminder: code OBSIDIAN100. One free month, cancel anytime.",
+                unsubscribe_token=unsub,
+            ),
+            email_type="day7_promo",
+            user_id=user_id,
+            db=db,
+        )
