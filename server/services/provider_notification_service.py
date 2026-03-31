@@ -25,8 +25,9 @@ def _get_active_provider_emails(db: Session) -> list[str]:
         db.query(User.email)
         .join(Provider, Provider.user_id == User.id)
         .filter(
-            Provider.is_active == True,
+            Provider.is_active,
             Provider.is_banned == False,
+            User.is_admin == False,
             Provider.user_id.isnot(None),
         )
         .all()
