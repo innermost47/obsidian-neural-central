@@ -6,7 +6,7 @@ from fastapi import (
     WebSocketDisconnect,
     WebSocket,
 )
-import time
+import asyncio
 from sqlalchemy.orm import Session
 from sqlalchemy import func
 from datetime import datetime, timezone, timedelta
@@ -19,6 +19,10 @@ from server.core.websocket_manager import manager
 from server.services.provider_service import ProviderService
 
 router = APIRouter(prefix="/providers", tags=["Providers"])
+
+
+class TimeoutError(Exception):
+    pass
 
 
 def calculate_uptime(
@@ -229,22 +233,39 @@ async def websocket_endpoint(
     provider.is_online = True
     db.commit()
 
+    db.close()
+
     pid = provider.id
     last_flush = datetime.now(timezone.utc)
+    FLUSH_INTERVAL = 900
 
     try:
         while True:
-            data = await websocket.receive_text()
-            now = datetime.now(timezone.utc)
-            if (now - last_flush).total_seconds() > 900:
+            try:
+                data = await asyncio.wait_for(
+                    websocket.receive_text(), timeout=FLUSH_INTERVAL
+                )
+
+            except asyncio.TimeoutError:
+                now = datetime.now(timezone.utc)
                 diff = (now - last_flush).total_seconds() / 60
-                ProviderService._update_daily_stats(db, pid, diff)
-                db.commit()
+
+                from server.core.database import SessionLocal
+
+                short_lived_db = SessionLocal()
+                try:
+                    ProviderService._update_daily_stats(short_lived_db, pid, diff)
+                    short_lived_db.commit()
+                    print(f"⏳ Auto-flush: {diff:.2f} min recorded for {pid}")
+                finally:
+                    short_lived_db.close()
+
                 last_flush = now
 
     except WebSocketDisconnect:
         end_dt = datetime.now(timezone.utc)
         duration_minutes = (end_dt - last_flush).total_seconds() / 60
+
         from server.core.database import SessionLocal
 
         new_db = SessionLocal()
@@ -255,7 +276,6 @@ async def websocket_endpoint(
                 p.last_seen = end_dt.replace(tzinfo=None)
 
             ProviderService._update_daily_stats(new_db, pid, duration_minutes)
-
             new_db.commit()
             print(f"✅ Session of {duration_minutes:.2f} min recorded for {pid}")
         except Exception as e:
