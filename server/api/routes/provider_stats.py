@@ -57,9 +57,13 @@ def get_my_provider_stats(
         or 0
     )
 
+    p_created_at = provider.created_at
+    if p_created_at and p_created_at.tzinfo is None:
+        p_created_at = p_created_at.replace(tzinfo=timezone.utc)
+
     provider_start = month_start
-    if provider.created_at and provider.created_at > month_start:
-        provider_start = provider.created_at
+    if p_created_at and p_created_at > month_start:
+        provider_start = p_created_at
 
     total_hours_in_period = (now - provider_start).total_seconds() / 3600
     required_hours = max(1, (total_hours_in_period / 24) * 8)
