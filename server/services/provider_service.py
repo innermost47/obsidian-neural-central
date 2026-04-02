@@ -576,3 +576,29 @@ class ProviderService:
                 if not p.is_banned
             ],
         }
+
+    @staticmethod
+    def _update_daily_stats(db: Session, provider_id: int, minutes_to_add: float):
+        from server.core.database import ProviderDailyStats
+        from sqlalchemy.dialects.postgresql import insert
+
+        today = datetime.now(timezone.utc).date()
+
+        stmt = insert(ProviderDailyStats).values(
+            provider_id=provider_id, date=today, total_presence_minutes=minutes_to_add
+        )
+
+        stmt = stmt.on_conflict_do_update(
+            index_elements=["provider_id", "date"],
+            set_={
+                "total_presence_minutes": ProviderDailyStats.total_presence_minutes
+                + minutes_to_add
+            },
+        )
+
+        try:
+            db.execute(stmt)
+            db.commit()
+        except Exception as e:
+            print(f"❌ Error updating daily stats for provider {provider_id}: {e}")
+            db.rollback()

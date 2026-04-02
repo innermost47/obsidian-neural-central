@@ -12,48 +12,29 @@ router = APIRouter(prefix="/providers", tags=["Providers"])
 
 
 def calculate_uptime(
-    db: Session, provider: Provider, now: datetime, month_start: datetime
+    db: Session, provider_id: int, now: datetime, month_start: datetime
 ):
-    p_created_at = (
-        provider.created_at.replace(tzinfo=timezone.utc)
-        if provider.created_at.tzinfo is None
-        else provider.created_at
-    )
-    effective_month_start = max(month_start, p_created_at)
-    last_24h_limit = now - timedelta(hours=24)
-    effective_24h_start = max(last_24h_limit, p_created_at)
+    from server.core.database import ProviderDailyStats
 
-    hours_elapsed_month = (now - effective_month_start).total_seconds() / 3600
-    hours_elapsed_24h = (now - effective_24h_start).total_seconds() / 3600
-
-    def get_count(start_date):
-        return (
-            db.query(func.count(ProviderPing.id))
-            .filter(
-                ProviderPing.provider_id == provider.id,
-                ProviderPing.pinged_at >= start_date,
-                ProviderPing.responded == True,
-            )
-            .scalar()
-            or 0
+    stats_month = (
+        db.query(ProviderDailyStats)
+        .filter(
+            ProviderDailyStats.provider_id == provider_id,
+            ProviderDailyStats.date >= month_start.date(),
         )
+        .all()
+    )
 
-    actual_pings_month = get_count(month_start)
-    actual_pings_24h = get_count(last_24h_limit)
+    total_minutes_month = sum(s.total_presence_minutes for s in stats_month)
+    month_hours = round(total_minutes_month / 60, 1)
 
-    PINGS_PER_HOUR_EXPECTED = 1.5
+    yesterday = (now - timedelta(days=1)).date()
+    total_minutes_24h = sum(
+        s.total_presence_minutes for s in stats_month if s.date >= yesterday
+    )
+    last_24h_hours = round(total_minutes_24h / 60, 1)
 
-    expected_month = max(0.5, hours_elapsed_month * PINGS_PER_HOUR_EXPECTED)
-    expected_24h = max(0.5, hours_elapsed_24h * PINGS_PER_HOUR_EXPECTED)
-
-    ratio_month = min(1.0, actual_pings_month / expected_month)
-    ratio_24h = min(1.0, actual_pings_24h / expected_24h)
-
-    return {
-        "month_hours": round(hours_elapsed_month * ratio_month, 1),
-        "last_24h_hours": round(hours_elapsed_24h * ratio_24h, 1),
-        "hours_elapsed_ref": hours_elapsed_month,
-    }
+    return {"month_hours": month_hours, "last_24h_hours": last_24h_hours}
 
 
 @router.get("/my-stats")
@@ -74,11 +55,12 @@ def get_my_provider_stats(
     now = datetime.now(timezone.utc)
     year, month = now.year, now.month
     _, days_in_month = monthrange(year, month)
-    days_elapsed = now.day
     month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
 
-    uptime_data = calculate_uptime(db, provider, now, month_start)
-    required_hours = max(1, (uptime_data["hours_elapsed_ref"] / 24) * 8)
+    uptime_data = calculate_uptime(db, provider.id, now, month_start)
+
+    days_elapsed = now.day
+    required_hours_total = days_elapsed * 8
 
     global_generations_month = (
         db.query(func.count(ProviderJob.id))
@@ -134,10 +116,10 @@ def get_my_provider_stats(
             "last_24h_hours": uptime_data["last_24h_hours"],
             "last_24h_target": 8,
             "month_hours": uptime_data["month_hours"],
-            "month_required_hours": int(required_hours),
+            "month_required_hours": required_hours_total,
             "month_progress_pct": (
-                round((uptime_data["month_hours"] / required_hours) * 100, 1)
-                if required_hours > 0
+                round((uptime_data["month_hours"] / required_hours_total) * 100, 1)
+                if required_hours_total > 0
                 else 0
             ),
         },

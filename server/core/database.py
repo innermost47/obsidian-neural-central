@@ -13,6 +13,8 @@ from sqlalchemy import (
     Enum as SQLEnum,
     JSON,
     BigInteger,
+    Date,
+    UniqueConstraint,
 )
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, relationship
@@ -237,6 +239,7 @@ class Provider(Base):
     billable_jobs = Column(Integer, default=0)
     uptime_score = Column(Float, default=0.0)
     last_ping = Column(DateTime, nullable=True)
+    is_online = Column(Boolean, default=True)
     last_seen = Column(DateTime, nullable=True)
     created_at = Column(DateTime, default=func.now())
     verification_failures = Column(Integer, nullable=False, default=0)
@@ -347,7 +350,7 @@ class FinanceReport(Base):
     eligible_providers = Column(Integer, nullable=False)
     share_per_provider_eur = Column(Float, nullable=False)
     remainder_eur = Column(Float, nullable=False)
-    transfers = Column(JSON, nullable=False)  # liste sérialisée
+    transfers = Column(JSON, nullable=False)
     published_at = Column(
         DateTime(timezone=True),
         default=lambda: datetime.now(timezone.utc),
@@ -356,6 +359,30 @@ class FinanceReport(Base):
 
     def __repr__(self):
         return f"<FinanceReport {self.month} — {self.total_revenue_eur}€>"
+
+
+class ProviderDailyStats(Base):
+    __tablename__ = "provider_daily_stats"
+
+    id = Column(Integer, primary_key=True, index=True)
+    provider_id = Column(
+        Integer,
+        ForeignKey("providers.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    date = Column(Date, nullable=False, index=True)
+    total_presence_minutes = Column(Float, default=0.0)
+    is_eligible_for_payout = Column(Boolean, default=False)
+    avg_similarity_score = Column(Float, default=0.0)
+    total_verifications = Column(Integer, default=0)
+    successful_verifications = Column(Integer, default=0)
+
+    provider = relationship("Provider")
+
+    __table_args__ = (
+        UniqueConstraint("provider_id", "date", name="_provider_date_uc"),
+    )
 
 
 def get_db():

@@ -326,15 +326,20 @@ def refill_provider_credits():
 def compute_and_redistribute():
     import asyncio
     import stripe
+    from sqlalchemy import func
     from server.config import settings
     from server.services.provider_ping_service import ProviderPingService
-    from server.core.database import Provider, ProviderPing
+    from server.core.database import Provider, ProviderDailyStats
 
     db = SessionLocal()
     now = datetime.utcnow()
+
     month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
     last_month_end = month_start
     last_month_start = (month_start - timedelta(days=1)).replace(day=1)
+
+    REQUIRED_DAILY_HOURS = 8
+    UPTIME_THRESHOLD = 0.8
 
     try:
         log(f"Starting redistribution for {last_month_start.strftime('%Y-%m')}...")
@@ -365,43 +370,50 @@ def compute_and_redistribute():
                 starting_after = charges.data[-1].id
 
         log(
-            f"Stripe revenue for {last_month_start.strftime('%Y-%m')}: {total_cents/100:.2f}€"
+            f"💰 Stripe revenue for {last_month_start.strftime('%Y-%m')}: {total_cents/100:.2f}€"
         )
 
-        REQUIRED_DAILY_HOURS = 8
         providers = db.query(Provider).filter(Provider.is_banned == False).all()
 
-        log(f"Calculating prorated uptime scores for {len(providers)} providers...")
-
         for provider in providers:
-            successful_pings = (
-                db.query(ProviderPing)
+            total_minutes = (
+                db.query(func.sum(ProviderDailyStats.total_presence_minutes))
                 .filter(
-                    ProviderPing.provider_id == provider.id,
-                    ProviderPing.pinged_at >= last_month_start,
-                    ProviderPing.pinged_at < last_month_end,
-                    ProviderPing.responded == True,
+                    ProviderDailyStats.provider_id == provider.id,
+                    ProviderDailyStats.date >= last_month_start.date(),
+                    ProviderDailyStats.date < last_month_end.date(),
                 )
-                .count()
+                .scalar()
+                or 0.0
             )
 
-            provider_start = last_month_start
-
-            if provider.created_at and provider.created_at > last_month_start:
-                provider_start = provider.created_at
-
+            provider_created_at = (
+                provider.created_at.replace(tzinfo=None)
+                if provider.created_at
+                else last_month_start
+            )
+            effective_start = max(last_month_start, provider_created_at)
             total_hours_in_period = (
-                last_month_end - provider_start
+                last_month_end - effective_start
             ).total_seconds() / 3600
 
-            required_hours_for_him = max(
-                1, (total_hours_in_period / 24) * REQUIRED_DAILY_HOURS
-            )
+            target_hours = max(1, (total_hours_in_period / 24) * REQUIRED_DAILY_HOURS)
 
-            provider.uptime_score = successful_pings / required_hours_for_him
+            real_hours = total_minutes / 60
+
+            raw_ratio = real_hours / target_hours
+
+            if raw_ratio >= UPTIME_THRESHOLD:
+                provider.uptime_score = 1.0
+                status_msg = "✅ VALIDATED (>=80%)"
+            else:
+                provider.uptime_score = raw_ratio
+                status_msg = f"⚠️ PARTIAL ({int(raw_ratio*100)}%)"
 
             log(
-                f"📊 {provider.name}: {successful_pings}h real / {int(required_hours_for_him)}h required = {provider.uptime_score*100:.1f}%"
+                f"📊 Provider: {provider.name.ljust(15)} | "
+                f"Real: {real_hours:>5.1f}h / Target: {target_hours:>5.1f}h | "
+                f"Status: {status_msg}"
             )
 
         db.commit()
@@ -414,10 +426,13 @@ def compute_and_redistribute():
                 dry_run=False,
             )
         )
-        log(f"✅ Redistribution done — {len(report['transfers'])} transfers")
+
+        log(
+            f"✅ Redistribution finished. Total transfers: {len(report.get('transfers', []))}"
+        )
 
     except Exception as e:
-        log(f"❌ Error in redistribution task: {e}")
+        log(f"❌ Error: {e}")
         db.rollback()
     finally:
         db.close()
