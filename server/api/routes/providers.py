@@ -230,11 +230,9 @@ async def websocket_endpoint(
     db.commit()
 
     pid = provider.id
-    start_dt = datetime.now(timezone.utc)
+    last_flush = datetime.now(timezone.utc)
 
     try:
-        last_flush = datetime.now(timezone.utc)
-
         while True:
             data = await websocket.receive_text()
             now = datetime.now(timezone.utc)
@@ -246,7 +244,7 @@ async def websocket_endpoint(
 
     except WebSocketDisconnect:
         end_dt = datetime.now(timezone.utc)
-        duration_minutes = (end_dt - start_dt).total_seconds() / 60
+        duration_minutes = (end_dt - last_flush).total_seconds() / 60
         from server.core.database import SessionLocal
 
         new_db = SessionLocal()
