@@ -229,13 +229,13 @@ async def websocket_endpoint(
 
     await manager.connect(websocket, provider.id)
 
+    pid = provider.id
     provider.last_seen = datetime.now(timezone.utc).replace(tzinfo=None)
     provider.is_online = True
     db.commit()
 
     db.close()
 
-    pid = provider.id
     last_flush = datetime.now(timezone.utc)
     FLUSH_INTERVAL = 900
 
