@@ -382,7 +382,9 @@ class ProviderVerificationService:
         return report
 
     @staticmethod
-    async def run_forever(db_factory):
+    async def run_forever():
+        from server.core.database import SessionLocal
+
         while True:
             delay = random.randint(VERIFY_INTERVAL_MIN, VERIFY_INTERVAL_MAX)
             hours = delay // 3600
@@ -391,10 +393,8 @@ class ProviderVerificationService:
 
             await asyncio.sleep(delay)
 
-            db = db_factory()
-            try:
-                await ProviderVerificationService.run_verification_round(db)
-            except Exception as e:
-                logger.error(f"❌ Verification round error: {e}")
-            finally:
-                db.close()
+            with SessionLocal() as db:
+                try:
+                    await ProviderVerificationService.run_verification_round(db)
+                except Exception as e:
+                    logger.error(f"❌ Verification round error: {e}")

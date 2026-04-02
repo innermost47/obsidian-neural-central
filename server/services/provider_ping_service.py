@@ -8,9 +8,9 @@ from datetime import datetime, timezone, timedelta
 from typing import List, Dict, Optional
 from sqlalchemy.orm import Session
 
-PING_PROBABILITY = float(os.getenv("PING_PROBABILITY", "0.60"))
+PING_PROBABILITY = float(os.getenv("PING_PROBABILITY", "1.0"))
 PING_TIMEOUT = float(os.getenv("PING_TIMEOUT", "5.0"))
-MIN_UPTIME_SCORE = float(os.getenv("MIN_UPTIME_SCORE", "0.60"))
+MIN_UPTIME_SCORE = float(os.getenv("MIN_UPTIME_SCORE", "0.30"))
 MIN_BILLABLE_JOBS = int(os.getenv("MIN_BILLABLE_JOBS", "1"))
 RANDOM_DELAY_MAX_MINUTES = int(os.getenv("RANDOM_DELAY_MAX_MINUTES", "50"))
 PLATFORM_FEE_PCT = float(os.getenv("PLATFORM_FEE_PCT", "0.15"))
@@ -98,7 +98,7 @@ class ProviderPingService:
         from server.core.database import Provider, ProviderPing
 
         now = datetime.now(timezone.utc)
-        month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+        twenty_four_hours_ago = now - timedelta(hours=24)
 
         providers = db.query(Provider).filter(Provider.is_banned == False).all()
 
@@ -107,7 +107,7 @@ class ProviderPingService:
                 db.query(ProviderPing)
                 .filter(
                     ProviderPing.provider_id == provider.id,
-                    ProviderPing.pinged_at >= month_start,
+                    ProviderPing.pinged_at >= twenty_four_hours_ago,
                 )
                 .count()
             )
@@ -120,7 +120,7 @@ class ProviderPingService:
                 db.query(ProviderPing)
                 .filter(
                     ProviderPing.provider_id == provider.id,
-                    ProviderPing.pinged_at >= month_start,
+                    ProviderPing.pinged_at >= twenty_four_hours_ago,
                     ProviderPing.responded == True,
                 )
                 .count()
@@ -138,10 +138,10 @@ class ProviderPingService:
 
         eligible = []
         for provider in providers:
-            if provider.uptime_score < MIN_UPTIME_SCORE:
+            if provider.uptime_score < 0.8:
                 print(
                     f"⛔ {provider.name} ineligible — uptime {provider.uptime_score*100:.1f}% "
-                    f"< {MIN_UPTIME_SCORE*100:.0f}%"
+                    f"< {0.8*100:.0f}%"
                 )
                 continue
 

@@ -42,6 +42,13 @@ async def run_provider_ping():
         db.close()
 
 
+async def run_provider_verification_forever():
+    try:
+        await ProviderVerificationService.run_forever()
+    except Exception as e:
+        logger.error(f"Provider verification loop crashed: {e}")
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     init_db()
@@ -58,10 +65,16 @@ async def lifespan(app: FastAPI):
             hours=1,
             id="provider_ping",
             replace_existing=True,
-            misfire_grace_time=600,
+            misfire_grace_time=60,
+            coalesce=True,
         )
+
+        provider_scheduler._executors.default.executor.submit = lambda *a, **kw: None
+
         provider_scheduler.start()
-        asyncio.create_task(ProviderVerificationService.run_forever(SessionLocal))
+
+        asyncio.create_task(run_provider_verification_forever())
+
         logger.info("✅ Provider verification loop started (random interval 1h–5h)")
         logger.info(
             "✅ Provider ping scheduler started (every hour, 60% random probability)"

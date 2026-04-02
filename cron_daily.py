@@ -328,6 +328,7 @@ def compute_and_redistribute():
     import stripe
     from server.config import settings
     from server.services.provider_ping_service import ProviderPingService
+    from server.core.database import Provider, ProviderPing
 
     db = SessionLocal()
     now = datetime.utcnow()
@@ -366,6 +367,44 @@ def compute_and_redistribute():
         log(
             f"Stripe revenue for {last_month_start.strftime('%Y-%m')}: {total_cents/100:.2f}€"
         )
+
+        REQUIRED_DAILY_HOURS = 8
+        providers = db.query(Provider).filter(Provider.is_banned == False).all()
+
+        log(f"Calculating prorated uptime scores for {len(providers)} providers...")
+
+        for provider in providers:
+            successful_pings = (
+                db.query(ProviderPing)
+                .filter(
+                    ProviderPing.provider_id == provider.id,
+                    ProviderPing.pinged_at >= last_month_start,
+                    ProviderPing.pinged_at < last_month_end,
+                    ProviderPing.responded == True,
+                )
+                .count()
+            )
+
+            provider_start = last_month_start
+
+            if provider.created_at and provider.created_at > last_month_start:
+                provider_start = provider.created_at
+
+            total_hours_in_period = (
+                last_month_end - provider_start
+            ).total_seconds() / 3600
+
+            required_hours_for_him = max(
+                1, (total_hours_in_period / 24) * REQUIRED_DAILY_HOURS
+            )
+
+            provider.uptime_score = successful_pings / required_hours_for_him
+
+            log(
+                f"📊 {provider.name}: {successful_pings}h real / {int(required_hours_for_him)}h required = {provider.uptime_score*100:.1f}%"
+            )
+
+        db.commit()
 
         report = asyncio.run(
             ProviderPingService.compute_monthly_redistribution(
