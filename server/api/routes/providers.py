@@ -233,8 +233,16 @@ async def websocket_endpoint(
     start_dt = datetime.now(timezone.utc)
 
     try:
+        last_flush = datetime.now(timezone.utc)
+
         while True:
             data = await websocket.receive_text()
+            now = datetime.now(timezone.utc)
+            if (now - last_flush).total_seconds() > 900:
+                diff = (now - last_flush).total_seconds() / 60
+                ProviderService._update_daily_stats(db, pid, diff)
+                db.commit()
+                last_flush = now
 
     except WebSocketDisconnect:
         end_dt = datetime.now(timezone.utc)
