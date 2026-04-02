@@ -22,29 +22,40 @@ router = APIRouter(prefix="/providers", tags=["Providers"])
 
 
 def calculate_uptime(
-    db: Session, provider_id: int, now: datetime, month_start: datetime
+    db: Session, provider: Provider, now: datetime, month_start: datetime
 ):
     from server.core.database import ProviderDailyStats
 
     stats_month = (
         db.query(ProviderDailyStats)
         .filter(
-            ProviderDailyStats.provider_id == provider_id,
+            ProviderDailyStats.provider_id == provider.id,
             ProviderDailyStats.date >= month_start.date(),
         )
         .all()
     )
 
-    total_minutes_month = sum(s.total_presence_minutes for s in stats_month)
-    month_hours = round(total_minutes_month / 60, 1)
+    total_minutes_base = sum(s.total_presence_minutes for s in stats_month)
 
+    current_session_minutes = 0
+    if provider.is_online and provider.last_seen:
+        last_seen_utc = provider.last_seen.replace(tzinfo=timezone.utc)
+        diff = now - last_seen_utc
+        current_session_minutes = max(0, diff.total_seconds() / 60)
+
+    total_minutes_month = total_minutes_base + current_session_minutes
+    month_hours = round(total_minutes_month / 60, 1)
     yesterday = (now - timedelta(days=1)).date()
-    total_minutes_24h = sum(
+    total_minutes_24h_base = sum(
         s.total_presence_minutes for s in stats_month if s.date >= yesterday
     )
-    last_24h_hours = round(total_minutes_24h / 60, 1)
+    last_24h_hours = round((total_minutes_24h_base + current_session_minutes) / 60, 1)
 
-    return {"month_hours": month_hours, "last_24h_hours": last_24h_hours}
+    return {
+        "month_hours": month_hours,
+        "last_24h_hours": last_24h_hours,
+        "is_online": provider.is_online,
+    }
 
 
 @router.get("/my-stats")
@@ -125,6 +136,7 @@ def get_my_provider_stats(
         "uptime": {
             "last_24h_hours": uptime_data["last_24h_hours"],
             "last_24h_target": 8,
+            "is_online": uptime_data["is_online"],
             "month_hours": uptime_data["month_hours"],
             "month_required_hours": required_hours_total,
             "month_progress_pct": (
