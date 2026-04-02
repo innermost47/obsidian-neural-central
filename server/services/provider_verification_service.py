@@ -124,6 +124,7 @@ class ProviderVerificationService:
     @staticmethod
     async def _request_verification(
         provider_url: str,
+        server_api_key: str,
         prompt: str,
         seed: int,
         duration: int,
@@ -134,7 +135,7 @@ class ProviderVerificationService:
                     f"{provider_url.rstrip('/')}/verify",
                     headers={
                         "Content-Type": "application/json",
-                        "X-API-Key": settings.SERVER_TO_PROVIDER_KEY,
+                        "X-API-Key": server_api_key,
                     },
                     json={"prompt": prompt, "seed": seed, "duration": duration},
                 )
@@ -219,6 +220,7 @@ class ProviderVerificationService:
     @staticmethod
     async def run_verification_round(db: Session) -> Dict:
         from server.core.database import Provider
+        from server.core.security import decrypt_server_key
 
         providers = (
             db.query(Provider)
@@ -241,12 +243,19 @@ class ProviderVerificationService:
             f"| prompt: '{prompt}' | seed: {seed}"
         )
 
-        tasks = [
-            ProviderVerificationService._request_verification(
-                p.url, prompt, seed, VERIFY_DURATION
-            )
-            for p in selected
-        ]
+        tasks = []
+        for p in selected:
+            try:
+                decrypted_key = decrypt_server_key(p.encoded_server_auth_key)
+                tasks.append(
+                    ProviderVerificationService._request_verification(
+                        p.url, decrypted_key, prompt, seed, VERIFY_DURATION
+                    )
+                )
+            except Exception as e:
+                logger.error(f"Failed to decrypt key for provider {p.name}: {e}")
+                tasks.append(asyncio.sleep(0, result=None))
+
         raw_results = await asyncio.gather(*tasks, return_exceptions=True)
 
         groups: Dict[str, List[Tuple[int, np.ndarray]]] = defaultdict(list)

@@ -125,6 +125,7 @@ class ProviderService:
                 "name": provider.name,
                 "url": provider.url,
                 "model": result.get("model", "stable-audio-open"),
+                "server_api_key": decrypt_server_key(provider.encoded_server_auth_key),
             }
 
         print("📭 No provider available right now")
@@ -230,9 +231,7 @@ class ProviderService:
                     f"{provider['url'].rstrip('/')}/generate",
                     headers={
                         **settings.BROWSER_HEADERS,
-                        "X-API-Key": decrypt_server_key(
-                            provider.encoded_server_auth_key
-                        ),
+                        "X-API-Key": provider["server_api_key"],
                     },
                     json={
                         "prompt": prompt,
