@@ -46,6 +46,7 @@ async def list_providers(
                 "name": p.name,
                 "url": p.url,
                 "stripe_account_id": p.stripe_account_id,
+                "is_online": getattr(p, "is_online", False),
                 "is_active": p.is_active,
                 "is_banned": p.is_banned,
                 "ban_reason": p.ban_reason,
