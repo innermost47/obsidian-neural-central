@@ -73,16 +73,15 @@ class ProviderPingService:
                         data = response.json()
                         returned_key = data.get("api_key", "")
                         key_hash = hashlib.sha256(returned_key.encode()).hexdigest()
-                        if key_hash != provider.api_key:
-                            print(
-                                f"⚠️ {provider.name} — invalid API key in response, ignoring"
-                            )
-                            responded = False
-                        else:
+                        if key_hash == provider.api_key:
                             responded = True
+                        else:
+                            print(f"⚠️ {provider.name} — invalid API key")
+                            responded = False
+                    else:
+                        responded = False
                     t1 = asyncio.get_event_loop().time()
                     response_time_ms = int((t1 - t0) * 1000)
-                    responded = response.status_code == 200
             except Exception as e:
                 print(f"⚠️  Ping failed for {provider.name}: {e}")
                 responded = False
