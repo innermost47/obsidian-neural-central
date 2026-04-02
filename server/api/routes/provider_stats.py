@@ -1,10 +1,10 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from sqlalchemy import func
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from calendar import monthrange
 
-from server.core.database import get_db, User, Provider, ProviderJob
+from server.core.database import get_db, User, Provider, ProviderPing, ProviderJob
 from server.api.dependencies import get_verified_user
 from server.config import settings
 
@@ -33,6 +33,36 @@ def get_my_provider_stats(
     year, month = now.year, now.month
     _, days_in_month = monthrange(year, month)
     days_elapsed = now.day
+
+    pings_last_24h = (
+        db.query(func.count(ProviderPing.id))
+        .filter(
+            ProviderPing.provider_id == provider.id,
+            ProviderPing.pinged_at >= now - timedelta(hours=24),
+            ProviderPing.responded == True,
+        )
+        .scalar()
+        or 0
+    )
+
+    month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    pings_this_month = (
+        db.query(func.count(ProviderPing.id))
+        .filter(
+            ProviderPing.provider_id == provider.id,
+            ProviderPing.pinged_at >= month_start,
+            ProviderPing.responded == True,
+        )
+        .scalar()
+        or 0
+    )
+
+    provider_start = month_start
+    if provider.created_at and provider.created_at > month_start:
+        provider_start = provider.created_at
+
+    total_hours_in_period = (now - provider_start).total_seconds() / 3600
+    required_hours = max(1, (total_hours_in_period / 24) * 8)
 
     global_generations_month = (
         db.query(func.count(ProviderJob.id))
@@ -87,10 +117,20 @@ def get_my_provider_stats(
             "id": provider.id,
             "name": provider.name,
             "is_active": provider.is_active,
-            "uptime_score": round((provider.uptime_score or 0) * 100, 1),
             "jobs_done": provider.jobs_done or 0,
             "billable_jobs": provider.billable_jobs or 0,
             "last_seen": provider.last_seen.isoformat() if provider.last_seen else None,
+        },
+        "uptime": {
+            "last_24h_hours": pings_last_24h,
+            "last_24h_target": 8,
+            "month_hours": pings_this_month,
+            "month_required_hours": int(required_hours),
+            "month_progress_pct": (
+                round((pings_this_month / required_hours) * 100, 1)
+                if required_hours > 0
+                else 0
+            ),
         },
         "network": {
             "global_generations_this_month": global_generations_month,
