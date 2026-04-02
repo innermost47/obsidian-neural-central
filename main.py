@@ -69,8 +69,6 @@ async def lifespan(app: FastAPI):
             coalesce=True,
         )
 
-        provider_scheduler._executors.default.executor.submit = lambda *a, **kw: None
-
         provider_scheduler.start()
 
         asyncio.create_task(run_provider_verification_forever())
