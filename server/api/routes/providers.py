@@ -39,8 +39,11 @@ def calculate_uptime(
 
     current_session_minutes = 0
     if provider.is_online and provider.last_seen:
-        last_seen_utc = provider.last_seen.replace(tzinfo=timezone.utc)
-        diff = now - last_seen_utc
+        last_seen_val = provider.last_seen
+        if last_seen_val.tzinfo is None:
+            last_seen_val = last_seen_val.replace(tzinfo=timezone.utc)
+
+        diff = now - last_seen_val
         current_session_minutes = max(0, diff.total_seconds() / 60)
 
     total_minutes_month = total_minutes_base + current_session_minutes
@@ -191,9 +194,6 @@ async def provider_heartbeat(
     if not provider:
         raise HTTPException(status_code=401, detail="Invalid API key")
 
-    provider.last_seen = datetime.now(timezone.utc)
-    db.commit()
-
     return {
         "status": "ok",
         "provider_id": provider.id,
@@ -225,19 +225,20 @@ async def websocket_endpoint(
 
     await manager.connect(websocket, provider.id)
 
-    provider.last_seen = datetime.now(timezone.utc)
+    provider.last_seen = datetime.now(timezone.utc).replace(tzinfo=None)
     provider.is_online = True
     db.commit()
 
     pid = provider.id
-    start_time = time.time()
+    start_dt = datetime.now(timezone.utc)
 
     try:
         while True:
             data = await websocket.receive_text()
 
     except WebSocketDisconnect:
-        duration_minutes = (time.time() - start_time) / 60
+        end_dt = datetime.now(timezone.utc)
+        duration_minutes = (end_dt - start_dt).total_seconds() / 60
         from server.core.database import SessionLocal
 
         new_db = SessionLocal()
@@ -245,7 +246,7 @@ async def websocket_endpoint(
             p = new_db.query(Provider).filter(Provider.id == pid).first()
             if p:
                 p.is_online = False
-                p.last_seen = datetime.now(timezone.utc)
+                p.last_seen = end_dt.replace(tzinfo=None)
 
             ProviderService._update_daily_stats(new_db, pid, duration_minutes)
 
