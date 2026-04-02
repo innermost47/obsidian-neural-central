@@ -78,7 +78,7 @@ def get_my_provider_stats(
     _, days_in_month = monthrange(year, month)
     month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
 
-    uptime_data = calculate_uptime(db, provider.id, now, month_start)
+    uptime_data = calculate_uptime(db, provider, now, month_start)
 
     days_elapsed = now.day
     required_hours_total = days_elapsed * 8
