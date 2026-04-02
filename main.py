@@ -5,7 +5,7 @@ import uvicorn
 import logging
 import asyncio
 from server.config import settings
-from server.core.database import init_db, SessionLocal
+from server.core.database import init_db, SessionLocal, Provider
 from server.services.provider_ping_service import ProviderPingService
 from server.api.routes import (
     auth,
@@ -52,6 +52,17 @@ async def run_provider_verification_forever():
 async def lifespan(app: FastAPI):
     init_db()
     logger.info("✅ Database initialized")
+
+    db = SessionLocal()
+    try:
+        db.query(Provider).update({Provider.is_online: False})
+        db.commit()
+        logger.info("✅ Providers status reset to offline")
+    except Exception as e:
+        logger.error(f"❌ Failed to reset providers status: {e}")
+        db.rollback()
+    finally:
+        db.close()
 
     provider_scheduler = None
     try:
