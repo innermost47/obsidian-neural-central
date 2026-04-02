@@ -67,7 +67,10 @@ class ProviderService:
             async with httpx.AsyncClient(timeout=PING_TIMEOUT) as client:
                 response = await client.get(
                     f"{url.rstrip('/')}/status",
-                    headers={"X-API-Key": settings.SERVER_TO_PROVIDER_KEY},
+                    headers={
+                        **settings.BROWSER_HEADERS,
+                        "X-API-Key": settings.SERVER_TO_PROVIDER_KEY,
+                    },
                 )
                 if response.status_code == 200:
                     return response.json()
@@ -222,7 +225,7 @@ class ProviderService:
                 response = await client.post(
                     f"{provider['url'].rstrip('/')}/generate",
                     headers={
-                        "Content-Type": "application/json",
+                        **settings.BROWSER_HEADERS,
                         "X-API-Key": settings.SERVER_TO_PROVIDER_KEY,
                     },
                     json={

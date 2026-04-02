@@ -97,7 +97,10 @@ async def test_health(client: httpx.AsyncClient, url: str) -> bool:
         r = await client.get(
             f"{url}/health",
             timeout=5.0,
-            headers={"X-API-Key": settings.SERVER_TO_PROVIDER_KEY},
+            headers={
+                **settings.BROWSER_HEADERS,
+                "X-API-Key": settings.SERVER_TO_PROVIDER_KEY,
+            },
         )
         if r.status_code == 200:
             data = r.json()
@@ -117,7 +120,10 @@ async def test_status(client: httpx.AsyncClient, url: str) -> dict | None:
         r = await client.get(
             f"{url}/status",
             timeout=5.0,
-            headers={"X-API-Key": settings.SERVER_TO_PROVIDER_KEY},
+            headers={
+                **settings.BROWSER_HEADERS,
+                "X-API-Key": settings.SERVER_TO_PROVIDER_KEY,
+            },
         )
         if r.status_code == 200:
             data = r.json()
@@ -158,6 +164,10 @@ async def test_single_generate(
         r = await client.post(
             f"{url}/generate",
             json={"prompt": prompt, "duration": duration},
+            headers={
+                **settings.BROWSER_HEADERS,
+                "X-API-Key": settings.SERVER_TO_PROVIDER_KEY,
+            },
             timeout=DEFAULT_TIMEOUT,
         )
         elapsed = time.time() - t0
@@ -212,7 +222,10 @@ async def test_verify_determinism(
                 f"{url}/verify",
                 json={"prompt": prompt, "seed": seed, "duration": duration},
                 timeout=DEFAULT_TIMEOUT,
-                headers={"X-API-Key": settings.SERVER_TO_PROVIDER_KEY},
+                headers={
+                    **settings.BROWSER_HEADERS,
+                    "X-API-Key": settings.SERVER_TO_PROVIDER_KEY,
+                },
             )
             elapsed = time.time() - t0
             elapsed_times.append(elapsed)

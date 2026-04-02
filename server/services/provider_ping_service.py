@@ -60,9 +60,12 @@ class ProviderPingService:
             try:
                 async with httpx.AsyncClient(timeout=settings.PING_TIMEOUT) as client:
                     t0 = asyncio.get_event_loop().time()
-                    headers = {"X-API-Key": settings.SERVER_TO_PROVIDER_KEY}
                     response = await client.get(
-                        f"{provider.url.rstrip('/')}/status", headers=headers
+                        f"{provider.url.rstrip('/')}/status",
+                        headers={
+                            **settings.BROWSER_HEADERS,
+                            "X-API-Key": settings.SERVER_TO_PROVIDER_KEY,
+                        },
                     )
                     if response.status_code == 200:
                         data = response.json()

@@ -71,6 +71,12 @@ class Settings:
     PLATFORM_FEE_PCT = float(os.getenv("PLATFORM_FEE_PCT", "0.15"))
     SERVER_TO_PROVIDER_KEY = os.getenv("SERVER_TO_PROVIDER_KEY")
 
+    BROWSER_HEADERS = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+        "Accept": "application/json, text/plain, */*",
+        "Accept-Language": "en-US,en;q=0.9,fr;q=0.8",
+    }
+
     API_URL = os.environ.get("API_URL")
 
     TIER_CREDITS = {
