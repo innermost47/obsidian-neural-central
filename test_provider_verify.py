@@ -11,6 +11,7 @@ import httpx
 import librosa
 import numpy as np
 from scipy.spatial.distance import cosine
+from server.config import settings
 
 DEFAULT_RUNS = 3
 DEFAULT_DURATION = 5
@@ -93,7 +94,11 @@ def save_wav(wav_bytes: bytes, path: str):
 async def test_health(client: httpx.AsyncClient, url: str) -> bool:
     title("① Health check")
     try:
-        r = await client.get(f"{url}/health", timeout=5.0)
+        r = await client.get(
+            f"{url}/health",
+            timeout=5.0,
+            headers={"X-API-Key": settings.SERVER_TO_PROVIDER_KEY},
+        )
         if r.status_code == 200:
             data = r.json()
             ok(f"Server is up — model loaded: {data.get('model_loaded')}")
@@ -109,7 +114,11 @@ async def test_health(client: httpx.AsyncClient, url: str) -> bool:
 async def test_status(client: httpx.AsyncClient, url: str) -> dict | None:
     title("② Status check")
     try:
-        r = await client.get(f"{url}/status", timeout=5.0)
+        r = await client.get(
+            f"{url}/status",
+            timeout=5.0,
+            headers={"X-API-Key": settings.SERVER_TO_PROVIDER_KEY},
+        )
         if r.status_code == 200:
             data = r.json()
             ok(f"Available: {data.get('available')}")
@@ -203,6 +212,7 @@ async def test_verify_determinism(
                 f"{url}/verify",
                 json={"prompt": prompt, "seed": seed, "duration": duration},
                 timeout=DEFAULT_TIMEOUT,
+                headers={"X-API-Key": settings.SERVER_TO_PROVIDER_KEY},
             )
             elapsed = time.time() - t0
             elapsed_times.append(elapsed)
@@ -342,6 +352,7 @@ async def test_divergence(
                 f"{url}/verify",
                 json={"prompt": prompt, "seed": seed, "duration": duration},
                 timeout=DEFAULT_TIMEOUT,
+                headers={"X-API-Key": settings.SERVER_TO_PROVIDER_KEY},
             )
             elapsed = time.time() - t0
             if r.status_code == 200:

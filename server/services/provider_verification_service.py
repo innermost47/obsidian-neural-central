@@ -6,12 +6,12 @@ import os
 import random
 from datetime import datetime, timezone
 from typing import Dict, List, Optional, Tuple
-
 import httpx
 import librosa
 import numpy as np
 from scipy.spatial.distance import cosine
 from sqlalchemy.orm import Session
+from server.config import settings
 
 logger = logging.getLogger(__name__)
 
@@ -132,7 +132,10 @@ class ProviderVerificationService:
             async with httpx.AsyncClient(timeout=VERIFY_TIMEOUT) as client:
                 response = await client.post(
                     f"{provider_url.rstrip('/')}/verify",
-                    headers={"Content-Type": "application/json"},
+                    headers={
+                        "Content-Type": "application/json",
+                        "X-API-Key": settings.SERVER_TO_PROVIDER_KEY,
+                    },
                     json={"prompt": prompt, "seed": seed, "duration": duration},
                 )
                 if response.status_code == 200:

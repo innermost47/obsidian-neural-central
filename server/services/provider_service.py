@@ -14,7 +14,7 @@ from collections import defaultdict
 from server.services.fal_service import FalService
 from server.services.credits_service import CreditsService
 from server.core.database import Provider, ProviderJob, OwnershipLog
-
+from server.config import settings
 
 PING_TIMEOUT = 5.0
 GENERATE_TIMEOUT = 180.0
@@ -65,7 +65,10 @@ class ProviderService:
     async def _ping_provider(url: str) -> Optional[Dict]:
         try:
             async with httpx.AsyncClient(timeout=PING_TIMEOUT) as client:
-                response = await client.get(f"{url.rstrip('/')}/status")
+                response = await client.get(
+                    f"{url.rstrip('/')}/status",
+                    headers={"X-API-Key": settings.SERVER_TO_PROVIDER_KEY},
+                )
                 if response.status_code == 200:
                     return response.json()
         except Exception:
@@ -220,6 +223,7 @@ class ProviderService:
                     f"{provider['url'].rstrip('/')}/generate",
                     headers={
                         "Content-Type": "application/json",
+                        "X-API-Key": settings.SERVER_TO_PROVIDER_KEY,
                     },
                     json={
                         "prompt": prompt,

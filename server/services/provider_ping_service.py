@@ -6,13 +6,7 @@ import random
 from datetime import datetime, timezone, timedelta
 from typing import List, Dict, Optional
 from sqlalchemy.orm import Session
-
-PING_PROBABILITY = float(os.getenv("PING_PROBABILITY", "1.0"))
-PING_TIMEOUT = float(os.getenv("PING_TIMEOUT", "5.0"))
-MIN_UPTIME_SCORE = float(os.getenv("MIN_UPTIME_SCORE", "0.30"))
-MIN_BILLABLE_JOBS = int(os.getenv("MIN_BILLABLE_JOBS", "1"))
-RANDOM_DELAY_MAX_MINUTES = int(os.getenv("RANDOM_DELAY_MAX_MINUTES", "50"))
-PLATFORM_FEE_PCT = float(os.getenv("PLATFORM_FEE_PCT", "0.15"))
+from server.config import settings
 
 
 class ProviderPingService:
@@ -64,10 +58,11 @@ class ProviderPingService:
             response_time_ms = None
 
             try:
-                async with httpx.AsyncClient(timeout=PING_TIMEOUT) as client:
+                async with httpx.AsyncClient(timeout=settings.PING_TIMEOUT) as client:
                     t0 = asyncio.get_event_loop().time()
+                    headers = {"X-API-Key": settings.SERVER_TO_PROVIDER_KEY}
                     response = await client.get(
-                        f"{provider.url.rstrip('/')}/status",
+                        f"{provider.url.rstrip('/')}/status", headers=headers
                     )
                     if response.status_code == 200:
                         data = response.json()
@@ -168,7 +163,7 @@ class ProviderPingService:
                 .count()
             )
 
-            if billable_this_month < MIN_BILLABLE_JOBS:
+            if billable_this_month < settings.MIN_BILLABLE_JOBS:
                 print(
                     f"⛔ {provider.name} ineligible — "
                     f"only {billable_this_month} billable job(s) this month"
@@ -203,7 +198,7 @@ class ProviderPingService:
             now = datetime.now(timezone.utc)
             month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
 
-        platform_fee_cents = int(month_revenue_cents * PLATFORM_FEE_PCT)
+        platform_fee_cents = int(month_revenue_cents * settings.PLATFORM_FEE_PCT)
         distributable_cents = month_revenue_cents - platform_fee_cents
 
         eligible = ProviderPingService.get_eligible_providers(db, month_start)
@@ -212,7 +207,7 @@ class ProviderPingService:
             return {
                 "status": "no_eligible_providers",
                 "month_revenue_cents": month_revenue_cents,
-                "platform_fee_pct": round(PLATFORM_FEE_PCT * 100, 1),
+                "platform_fee_pct": round(settings.PLATFORM_FEE_PCT * 100, 1),
                 "platform_fee_cents": platform_fee_cents,
                 "distributable_cents": distributable_cents,
                 "eligible_count": 0,
@@ -228,7 +223,7 @@ class ProviderPingService:
         print(f"\n💰 Monthly redistribution")
         print(f"   Revenue      : {month_revenue_cents/100:.2f}€")
         print(
-            f"   Platform fee : {platform_fee_cents/100:.2f}€ ({PLATFORM_FEE_PCT*100:.0f}%)"
+            f"   Platform fee : {platform_fee_cents/100:.2f}€ ({settings.PLATFORM_FEE_PCT*100:.0f}%)"
         )
         print(f"   Distributable: {distributable_cents/100:.2f}€")
         print(f"   Eligible     : {nb_eligible} providers")
@@ -267,7 +262,7 @@ class ProviderPingService:
             "status": "computed" if dry_run else "executed",
             "month": month_start.strftime("%Y-%m"),
             "month_revenue_cents": month_revenue_cents,
-            "platform_fee_pct": round(PLATFORM_FEE_PCT * 100, 1),
+            "platform_fee_pct": round(settings.PLATFORM_FEE_PCT * 100, 1),
             "platform_fee_cents": platform_fee_cents,
             "distributable_cents": distributable_cents,
             "eligible_count": nb_eligible,

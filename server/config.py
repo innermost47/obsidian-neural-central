@@ -63,6 +63,14 @@ class Settings:
 
     REPO_URL = os.environ.get("REPO_URL")
 
+    PING_PROBABILITY = float(os.getenv("PING_PROBABILITY", "1.0"))
+    PING_TIMEOUT = float(os.getenv("PING_TIMEOUT", "5.0"))
+    MIN_UPTIME_SCORE = float(os.getenv("MIN_UPTIME_SCORE", "0.30"))
+    MIN_BILLABLE_JOBS = int(os.getenv("MIN_BILLABLE_JOBS", "1"))
+    RANDOM_DELAY_MAX_MINUTES = int(os.getenv("RANDOM_DELAY_MAX_MINUTES", "50"))
+    PLATFORM_FEE_PCT = float(os.getenv("PLATFORM_FEE_PCT", "0.15"))
+    SERVER_TO_PROVIDER_KEY = os.getenv("SERVER_TO_PROVIDER_KEY")
+
     API_URL = os.environ.get("API_URL")
 
     TIER_CREDITS = {
