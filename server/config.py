@@ -69,7 +69,7 @@ class Settings:
     MIN_BILLABLE_JOBS = int(os.getenv("MIN_BILLABLE_JOBS", "1"))
     RANDOM_DELAY_MAX_MINUTES = int(os.getenv("RANDOM_DELAY_MAX_MINUTES", "50"))
     PLATFORM_FEE_PCT = float(os.getenv("PLATFORM_FEE_PCT", "0.15"))
-    SERVER_TO_PROVIDER_KEY = os.getenv("SERVER_TO_PROVIDER_KEY")
+    SERVER_PROVIDER_ENCRYPTION_KEY = os.getenv("SERVER_PROVIDER_ENCRYPTION_KEY")
 
     BROWSER_HEADERS = {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
