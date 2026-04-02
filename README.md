@@ -291,14 +291,16 @@ chmod +x /path/to/project/run_cron.sh
 0 0 * * * /path/to/project/run_cron.sh --task expire_gifts >> /path/to/logs/cron.log 2>&1
 5 0 * * * /path/to/project/run_cron.sh --task refill_gifts >> /path/to/logs/cron.log 2>&1
 10 0 1 * * /path/to/project/run_cron.sh --task refill_provider_credits >> /path/to/logs/cron.log 2>&1
-0 6 1 * * /path/to/project/run_cron.sh --task redistribution >> /path/to/logs/cron.log 2>&1
+0 3 1 * * /path/to/project/run_cron.sh --task cleanup_pings >> /path/to/logs/cron.log 2>&1
+0 6 1 * * /path/to/project/run_cron.sh --task redistribution >> /path/to/logs/stripe_payout.log 2>&1
 ```
 
-| Task                      | Schedule              | Description                                             |
-| ------------------------- | --------------------- | ------------------------------------------------------- |
-| `followup_emails`         | Every day at 10:00    | Onboarding sequence (J+2, J+7, weeks 2–4)               |
-| `expiration_warnings`     | Every hour            | Warn users 7, 3, 1 day before subscription expiry       |
-| `expire_gifts`            | Every day at 00:00    | Expire active gifts past their end date                 |
-| `refill_gifts`            | Every day at 00:05    | Monthly credit refill for active gift subscriptions     |
-| `refill_provider_credits` | 1st of month at 00:10 | Monthly credit refill for provider accounts             |
-| `redistribution`          | 1st of month at 06:00 | Fetch Stripe revenue → compute + execute redistribution |
+| Task                      | Schedule              | Description                                                                                |
+| :------------------------ | :-------------------- | :----------------------------------------------------------------------------------------- |
+| `followup_emails`         | Every day at 10:00    | Onboarding sequence (D+2, D+7, weeks 2–4)                                                  |
+| `expiration_warnings`     | Every hour            | Warns users 7, 3, and 1 day(s) before subscription expiry                                  |
+| `expire_gifts`            | Every day at 00:00    | Expires active gift subscriptions past their end date                                      |
+| `refill_gifts`            | Every day at 00:05    | Monthly credit refill for active gift subscriptions                                        |
+| `refill_provider_credits` | 1st of month at 00:10 | Monthly credit refill for provider accounts                                                |
+| `cleanup_pings`           | 1st of month at 03:00 | **DB Cleanup**: Deletes ping logs older than 2 months (in 5k batches) to keep queries fast |
+| `redistribution`          | 1st of month at 06:00 | Fetches Stripe revenue → Computes prorated uptime → Executes Stripe transfers              |

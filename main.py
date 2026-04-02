@@ -62,7 +62,7 @@ async def lifespan(app: FastAPI):
         provider_scheduler.add_job(
             run_provider_ping,
             trigger="interval",
-            hours=1,
+            minutes=10,
             id="provider_ping",
             replace_existing=True,
             misfire_grace_time=60,
@@ -74,9 +74,7 @@ async def lifespan(app: FastAPI):
         asyncio.create_task(run_provider_verification_forever())
 
         logger.info("✅ Provider verification loop started (random interval 1h–5h)")
-        logger.info(
-            "✅ Provider ping scheduler started (every hour, 60% random probability)"
-        )
+        logger.info("✅ Provider ping scheduler started.")
     except Exception as e:
         logger.error(f"Failed to start provider ping scheduler: {e}")
 

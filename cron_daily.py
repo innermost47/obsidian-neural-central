@@ -423,6 +423,58 @@ def compute_and_redistribute():
         db.close()
 
 
+def cleanup_old_pings():
+    db = SessionLocal()
+    try:
+        from server.core.database import ProviderPing
+
+        log("Starting old pings cleanup...")
+
+        now = datetime.utcnow()
+        two_months_ago = now - relativedelta(months=2)
+        cutoff_date = two_months_ago.replace(
+            day=1, hour=0, minute=0, second=0, microsecond=0
+        )
+
+        pings_to_delete = (
+            db.query(ProviderPing).filter(ProviderPing.pinged_at < cutoff_date).count()
+        )
+
+        if pings_to_delete == 0:
+            log("✅ No old pings to delete.")
+            return
+
+        deleted_total = 0
+        while True:
+            batch = (
+                db.query(ProviderPing.id)
+                .filter(ProviderPing.pinged_at < cutoff_date)
+                .limit(5000)
+                .all()
+            )
+
+            if not batch:
+                break
+
+            batch_ids = [p.id for p in batch]
+            db.query(ProviderPing).filter(ProviderPing.id.in_(batch_ids)).delete(
+                synchronize_session=False
+            )
+            deleted_total += len(batch_ids)
+            db.commit()
+            log(f"   ... deleted {deleted_total}/{pings_to_delete} pings")
+
+        log(
+            f"✅ Cleanup done — {deleted_total} old pings deleted (older than {cutoff_date.strftime('%Y-%m-%d')})"
+        )
+
+    except Exception as e:
+        log(f"❌ Error in pings cleanup: {e}")
+        db.rollback()
+    finally:
+        db.close()
+
+
 TASKS = {
     "followup_emails": check_and_send_followup_emails,
     "expiration_warnings": send_gift_expiration_warnings,
@@ -430,6 +482,7 @@ TASKS = {
     "refill_gifts": refill_gift_subscription_credits,
     "refill_provider_credits": refill_provider_credits,
     "redistribution": compute_and_redistribute,
+    "cleanup_pings": cleanup_old_pings,
 }
 
 if __name__ == "__main__":

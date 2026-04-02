@@ -1,6 +1,5 @@
 import asyncio
 import httpx
-import json
 import os
 import hashlib
 import random
@@ -20,19 +19,11 @@ class ProviderPingService:
 
     @staticmethod
     async def check_and_ping(db: Session):
-        if random.random() > PING_PROBABILITY:
-            print(f"🎲 Ping skipped this hour (random draw)")
-            return
+        from server.core.database import Provider
 
-        delay_seconds = random.randint(0, RANDOM_DELAY_MAX_MINUTES * 60)
-        print(f"⏳ Ping scheduled in {delay_seconds // 60} min")
-
+        delay_seconds = random.randint(0, 9 * 60)
+        print(f"🥷 Stealth ping — striking in {delay_seconds // 60} min...")
         await asyncio.sleep(delay_seconds)
-        await ProviderPingService._ping_all_providers(db)
-
-    @staticmethod
-    async def _ping_all_providers(db: Session):
-        from server.core.database import Provider, ProviderPing
 
         providers = (
             db.query(Provider)
@@ -43,9 +34,31 @@ class ProviderPingService:
         if not providers:
             return
 
-        print(f"📡 Pinging {len(providers)} provider(s)...")
+        half_of_providers = max(1, len(providers) // 2)
+        number_of_targets = max(1, random.randint(1, half_of_providers))
+        targets = random.sample(providers, min(number_of_targets, len(providers)))
 
-        for provider in providers:
+        print(f"🎯 Pinging {len(targets)} random target(s)...")
+
+        await ProviderPingService._ping_all_providers(db, targets)
+
+    @staticmethod
+    async def _ping_all_providers(db: Session, targets: list = None):
+        from server.core.database import Provider, ProviderPing
+
+        if targets is None:
+            targets = (
+                db.query(Provider)
+                .filter(Provider.is_active == True, Provider.is_banned == False)
+                .all()
+            )
+
+        if not targets:
+            return
+
+        print(f"📡 Executing ping for {len(targets)} provider(s)...")
+
+        for provider in targets:
             start_time = datetime.now(timezone.utc)
             responded = False
             response_time_ms = None
