@@ -1,12 +1,12 @@
 import asyncio
 import httpx
-import os
 import hashlib
 import random
 from datetime import datetime, timezone, timedelta
 from typing import List, Dict, Optional
 from sqlalchemy.orm import Session
 from server.config import settings
+from server.core.security import decrypt_server_key
 
 
 class ProviderPingService:
@@ -64,7 +64,9 @@ class ProviderPingService:
                         f"{provider.url.rstrip('/')}/status",
                         headers={
                             **settings.BROWSER_HEADERS,
-                            "X-API-Key": settings.SERVER_TO_PROVIDER_KEY,
+                            "X-API-Key": decrypt_server_key(
+                                provider.encoded_server_auth_key
+                            ),
                         },
                     )
                     if response.status_code == 200:

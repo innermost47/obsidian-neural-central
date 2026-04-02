@@ -10,3 +10,4 @@ logs/*
 !logs/.gitkeep
 output.log
 run_cron.sh
+TO_DO.md

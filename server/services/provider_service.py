@@ -15,6 +15,7 @@ from server.services.fal_service import FalService
 from server.services.credits_service import CreditsService
 from server.core.database import Provider, ProviderJob, OwnershipLog
 from server.config import settings
+from server.core.security import encrypt_server_key, decrypt_server_key
 
 PING_TIMEOUT = 5.0
 GENERATE_TIMEOUT = 180.0
@@ -62,14 +63,14 @@ class ProviderService:
             db.close()
 
     @staticmethod
-    async def _ping_provider(url: str) -> Optional[Dict]:
+    async def _ping_provider(url: str, encoded_server_auth_key: str) -> Optional[Dict]:
         try:
             async with httpx.AsyncClient(timeout=PING_TIMEOUT) as client:
                 response = await client.get(
                     f"{url.rstrip('/')}/status",
                     headers={
                         **settings.BROWSER_HEADERS,
-                        "X-API-Key": settings.SERVER_TO_PROVIDER_KEY,
+                        "X-API-Key": decrypt_server_key(encoded_server_auth_key),
                     },
                 )
                 if response.status_code == 200:
@@ -94,7 +95,10 @@ class ProviderService:
 
         print(f"🔍 Pinging {len(providers)} provider(s)...")
 
-        ping_tasks = [ProviderService._ping_provider(p.url) for p in providers]
+        ping_tasks = [
+            ProviderService._ping_provider(p.url, p.encoded_server_auth_key)
+            for p in providers
+        ]
         results = await asyncio.gather(*ping_tasks, return_exceptions=True)
 
         for provider, result in zip(providers, results):
@@ -226,7 +230,9 @@ class ProviderService:
                     f"{provider['url'].rstrip('/')}/generate",
                     headers={
                         **settings.BROWSER_HEADERS,
-                        "X-API-Key": settings.SERVER_TO_PROVIDER_KEY,
+                        "X-API-Key": decrypt_server_key(
+                            provider.encoded_server_auth_key
+                        ),
                     },
                     json={
                         "prompt": prompt,
@@ -512,10 +518,14 @@ class ProviderService:
         api_key = ProviderService.generate_api_key()
         api_key_hash = hashlib.sha256(api_key.encode()).hexdigest()
 
+        s_auth_key = ProviderService.generate_api_key()
+        s_auth_key_encrypted = encrypt_server_key(s_auth_key)
+
         provider = Provider(
             name=name,
             url=url,
             api_key=api_key_hash,
+            encoded_server_auth_key=s_auth_key_encrypted,
             stripe_account_id=stripe_account_id if stripe_account_id else None,
             is_active=True,
             is_banned=False,
@@ -541,6 +551,7 @@ class ProviderService:
             "name": provider.name,
             "url": provider.url,
             "api_key": api_key,
+            "server_auth_key": s_auth_key,
         }
 
     @staticmethod

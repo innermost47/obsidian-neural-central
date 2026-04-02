@@ -240,6 +240,7 @@ class Provider(Base):
     last_seen = Column(DateTime, nullable=True)
     created_at = Column(DateTime, default=func.now())
     verification_failures = Column(Integer, nullable=False, default=0)
+    encoded_server_auth_key = Column(String(500), nullable=True)
     user_id = Column(
         Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True
     )

@@ -12,6 +12,28 @@ from cryptography.fernet import Fernet
 
 _cipher = None
 
+_server_cipher = None
+
+
+def get_server_cipher():
+    global _server_cipher
+    if _server_cipher is None:
+        key = getattr(settings, "SERVER_PROVIDER_ENCRYPTION_KEY", None)
+        if not key:
+            raise ValueError("SERVER_PROVIDER_ENCRYPTION_KEY not set in environment")
+        _server_cipher = Fernet(key.encode())
+    return _server_cipher
+
+
+def encrypt_server_key(key: str) -> str:
+    cipher = get_server_cipher()
+    return cipher.encrypt(key.encode()).decode()
+
+
+def decrypt_server_key(encrypted_key: str) -> str:
+    cipher = get_server_cipher()
+    return cipher.decrypt(encrypted_key.encode()).decode()
+
 
 def get_cipher():
     global _cipher

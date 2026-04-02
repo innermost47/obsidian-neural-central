@@ -1,7 +1,6 @@
 import argparse
 import asyncio
 import io
-import os
 import random
 import sys
 import time
@@ -12,6 +11,9 @@ import librosa
 import numpy as np
 from scipy.spatial.distance import cosine
 from server.config import settings
+from sqlalchemy.orm import Session
+from server.core.database import SessionLocal, Provider
+from server.core.security import decrypt_server_key
 
 DEFAULT_RUNS = 3
 DEFAULT_DURATION = 5
@@ -57,6 +59,30 @@ def sep():
     print(f"{DIM}{'─' * 55}{RESET}")
 
 
+def get_provider_secrets(url: str):
+    db: Session = SessionLocal()
+    try:
+        clean_url = url.rstrip("/")
+        provider = db.query(Provider).filter(Provider.url == clean_url).first()
+
+        if not provider:
+            fail(f"Provider not found in database for URL: {clean_url}")
+            sys.exit(1)
+
+        if not provider.encoded_server_auth_key:
+            fail(f"No encoded_server_auth_key found for {provider.name}")
+            sys.exit(1)
+
+        try:
+            decrypted_key = decrypt_server_key(provider.encoded_server_auth_key)
+            return decrypted_key, provider.name
+        except Exception as e:
+            fail(f"Failed to decrypt provider key: {e}")
+            sys.exit(1)
+    finally:
+        db.close()
+
+
 def mel_fingerprint(wav_bytes: bytes, duration: int) -> np.ndarray | None:
     try:
         buf = io.BytesIO(wav_bytes)
@@ -91,16 +117,13 @@ def save_wav(wav_bytes: bytes, path: str):
         f.write(wav_bytes)
 
 
-async def test_health(client: httpx.AsyncClient, url: str) -> bool:
+async def test_health(client: httpx.AsyncClient, url: str, headers: dict) -> bool:
     title("① Health check")
     try:
         r = await client.get(
             f"{url}/health",
             timeout=5.0,
-            headers={
-                **settings.BROWSER_HEADERS,
-                "X-API-Key": settings.SERVER_TO_PROVIDER_KEY,
-            },
+            headers=headers,
         )
         if r.status_code == 200:
             data = r.json()
@@ -114,16 +137,15 @@ async def test_health(client: httpx.AsyncClient, url: str) -> bool:
         return False
 
 
-async def test_status(client: httpx.AsyncClient, url: str) -> dict | None:
+async def test_status(
+    client: httpx.AsyncClient, url: str, headers: dict
+) -> dict | None:
     title("② Status check")
     try:
         r = await client.get(
             f"{url}/status",
             timeout=5.0,
-            headers={
-                **settings.BROWSER_HEADERS,
-                "X-API-Key": settings.SERVER_TO_PROVIDER_KEY,
-            },
+            headers=headers,
         )
         if r.status_code == 200:
             data = r.json()
@@ -152,6 +174,7 @@ async def test_single_generate(
     url: str,
     prompt: str,
     duration: int,
+    headers: dict,
     save_dir: str | None = None,
 ) -> bytes | None:
     title("③ Single generation test (random seed)")
@@ -164,10 +187,7 @@ async def test_single_generate(
         r = await client.post(
             f"{url}/generate",
             json={"prompt": prompt, "duration": duration},
-            headers={
-                **settings.BROWSER_HEADERS,
-                "X-API-Key": settings.SERVER_TO_PROVIDER_KEY,
-            },
+            headers=headers,
             timeout=DEFAULT_TIMEOUT,
         )
         elapsed = time.time() - t0
@@ -202,6 +222,7 @@ async def test_verify_determinism(
     seed: int,
     duration: int,
     runs: int,
+    headers: dict,
     save_dir: str | None = None,
 ) -> bool:
     title(f"④ Proof-of-work determinism test ({runs} runs, same seed)")
@@ -222,10 +243,7 @@ async def test_verify_determinism(
                 f"{url}/verify",
                 json={"prompt": prompt, "seed": seed, "duration": duration},
                 timeout=DEFAULT_TIMEOUT,
-                headers={
-                    **settings.BROWSER_HEADERS,
-                    "X-API-Key": settings.SERVER_TO_PROVIDER_KEY,
-                },
+                headers=headers,
             )
             elapsed = time.time() - t0
             elapsed_times.append(elapsed)
@@ -336,6 +354,7 @@ async def test_divergence(
     client: httpx.AsyncClient,
     url: str,
     duration: int,
+    headers: dict,
     save_dir: str | None = None,
 ) -> bool:
     title("⑥ Divergence test — two radically different prompts")
@@ -365,7 +384,7 @@ async def test_divergence(
                 f"{url}/verify",
                 json={"prompt": prompt, "seed": seed, "duration": duration},
                 timeout=DEFAULT_TIMEOUT,
-                headers={"X-API-Key": settings.SERVER_TO_PROVIDER_KEY},
+                headers=headers,
             )
             elapsed = time.time() - t0
             if r.status_code == 200:
@@ -481,6 +500,13 @@ Examples:
     save_dir = args.output if args.save_wavs else None
     url = args.url.rstrip("/")
 
+    title("🔑 Security Initializing")
+    server_key, provider_name = get_provider_secrets(url)
+    ok(f"Identity confirmed: {provider_name}")
+    info(f"Using unique decrypted key for this session")
+
+    auth_headers = {**settings.BROWSER_HEADERS, "X-API-Key": server_key}
+
     print(f"\n{BOLD}{'='*55}")
     print(f"  OBSIDIAN Neural — Provider Verification Test")
     print(f"{'='*55}{RESET}")
@@ -497,29 +523,45 @@ Examples:
 
     async with httpx.AsyncClient() as client:
 
-        results["health"] = await test_health(client, url)
+        results["health"] = await test_health(client, url, headers=auth_headers)
         if not results["health"]:
             print(f"\n{RED}Provider unreachable — aborting.{RESET}\n")
             sys.exit(1)
 
-        status_data = await test_status(client, url)
+        status_data = await test_status(client, url, headers=auth_headers)
         results["status"] = status_data is not None
 
         if not args.skip_single:
             wav = await test_single_generate(
-                client, url, args.prompt, args.duration, save_dir
+                client,
+                url,
+                args.prompt,
+                args.duration,
+                headers=auth_headers,
+                save_dir=save_dir,
             )
             results["single_generate"] = wav is not None
         else:
             results["single_generate"] = None
 
         results["determinism"] = await test_verify_determinism(
-            client, url, args.prompt, seed, args.duration, args.runs, save_dir
+            client,
+            url,
+            args.prompt,
+            seed,
+            args.duration,
+            args.runs,
+            headers=auth_headers,
+            save_dir=save_dir,
         )
 
         if not args.skip_divergence:
             results["divergence"] = await test_divergence(
-                client, url, DIVERGENCE_DURATION, save_dir
+                client,
+                url,
+                DIVERGENCE_DURATION,
+                headers=auth_headers,
+                save_dir=save_dir,
             )
         else:
             results["divergence"] = None

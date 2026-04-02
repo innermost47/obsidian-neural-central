@@ -2,7 +2,6 @@ from fastapi import APIRouter, Depends, HTTPException, Header
 from sqlalchemy.orm import Session
 from sqlalchemy import desc
 import hashlib
-from datetime import datetime, timezone
 import stripe
 from server.config import settings
 from server.core.database import get_db, User, Provider, ProviderJob
@@ -13,9 +12,9 @@ from server.api.models import (
     AddProviderRequest,
     UpdateProviderRequest,
     BanProviderRequest,
-    RedistributionRequest,
 )
 import logging
+from server.core.security import encrypt_server_key
 
 router = APIRouter(prefix="/admin/providers", tags=["Admin Providers"])
 logger = logging.getLogger(__name__)
@@ -273,6 +272,33 @@ async def regenerate_api_key(
         "message": f"API key regenerated for {provider.name}",
         "api_key": new_key,
         "warning": "Save this key now — it will never be displayed again",
+    }
+
+
+@router.post("/{provider_id}/regenerate-server-key")
+async def regenerate_server_auth_key(
+    provider_id: int,
+    db: Session = Depends(get_db),
+    _: User = Depends(get_admin_user),
+):
+    provider = db.query(Provider).filter(Provider.id == provider_id).first()
+    if not provider:
+        raise HTTPException(status_code=404, detail="Provider not found")
+
+    new_raw_server_key = ProviderService.generate_api_key()
+
+    encrypted_key = encrypt_server_key(new_raw_server_key)
+
+    provider.encoded_server_auth_key = encrypted_key
+
+    db.commit()
+
+    return {
+        "status": "success",
+        "provider_name": provider.name,
+        "new_server_auth_key": new_raw_server_key,
+        "action_required": "L'admin du provider doit mettre à jour son header 'X-API-Key' avec cette valeur.",
+        "note": "Cette clé est stockée de manière chiffrée en base de données.",
     }
 
 
