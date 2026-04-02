@@ -10,6 +10,7 @@ from server.services.provider_ping_service import ProviderPingService
 from server.api.routes import (
     auth,
     generation,
+    providers,
     webhooks,
     payments,
     contact,
@@ -23,8 +24,6 @@ from server.api.routes import (
     admin_providers,
     public,
     unsubscribe,
-    provider_stats,
-    provider_heartbeat,
 )
 from server.services.provider_verification_service import ProviderVerificationService
 
@@ -118,8 +117,7 @@ app.include_router(admin_email.router, prefix="/api/v1")
 app.include_router(admin_providers.router, prefix="/api/v1")
 app.include_router(public.router, prefix="/api/v1")
 app.include_router(unsubscribe.router, prefix="/api/v1")
-app.include_router(provider_stats.router, prefix="/api/v1")
-app.include_router(provider_heartbeat.router, prefix="/api/v1")
+app.include_router(providers.router, prefix="/api/v1")
 app.include_router(press.router)
 
 
