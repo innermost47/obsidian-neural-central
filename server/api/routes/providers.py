@@ -62,6 +62,19 @@ def get_my_provider_stats(
         or 0
     )
 
+    my_jobs_month = (
+        db.query(func.count(ProviderJob.id))
+        .filter(
+            ProviderJob.provider_id == provider.id,
+            ProviderJob.status == "done",
+            ProviderJob.used_fallback == False,
+            func.extract("year", ProviderJob.created_at) == year,
+            func.extract("month", ProviderJob.created_at) == month,
+        )
+        .scalar()
+        or 0
+    )
+
     active_providers_count = (
         db.query(func.count(Provider.id))
         .filter(Provider.is_active == True, Provider.is_banned == False)
@@ -98,6 +111,7 @@ def get_my_provider_stats(
             "is_active": provider.is_active,
             "jobs_done": provider.jobs_done or 0,
             "billable_jobs": provider.billable_jobs or 0,
+            "jobs_done_this_month": my_jobs_month,
             "last_seen": provider.last_seen.isoformat() if provider.last_seen else None,
         },
         "uptime": {
