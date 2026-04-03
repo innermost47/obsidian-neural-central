@@ -209,21 +209,6 @@ async def websocket_endpoint(
         await websocket.close(code=4001)
         return
 
-    x_provider_hash = websocket.headers.get("x-provider-hash", "")
-    print(f"[WS] x_provider_hash reçu: '{x_provider_hash}'")
-    print(f"[WS] github content loaded: {get_github_file_content() is not None}")
-    if not verify_provider_hash(
-        x_provider_hash,
-        provider.api_key,
-        provider.encoded_server_auth_key,
-    ):
-        print(f"⚠️  {provider.name} — code hash mismatch on connect, rejecting")
-        ProviderService._ban_provider(
-            db, provider.id, "Code integrity check failed on connect"
-        )
-        await websocket.close(code=1008)
-        return
-
     await manager.connect(websocket, provider.id)
 
     pid = provider.id
