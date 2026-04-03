@@ -46,8 +46,11 @@ async def _fetch_github_content() -> Optional[bytes]:
         async with httpx.AsyncClient(timeout=10.0) as client:
             r = await client.get(PROVIDER_GITHUB_URL)
             if r.status_code == 200:
-                return r.content
-            logger.warning(f"⚠️  GitHub fetch failed: HTTP {r.status_code}")
+                content = r.content.replace(b"\r\n", b"\n").replace(b"\r", b"\n")
+                content = (
+                    content.replace(b" ", b"").replace(b"\n", b"").replace(b"\t", b"")
+                )
+                return content
     except Exception as e:
         logger.warning(f"⚠️  GitHub fetch error: {e}")
     return None
