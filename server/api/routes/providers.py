@@ -10,7 +10,6 @@ import asyncio
 from sqlalchemy.orm import Session
 from sqlalchemy import func
 from datetime import datetime, timezone
-from calendar import monthrange
 import hashlib
 from server.core.database import get_db, User, Provider, ProviderJob
 from server.api.dependencies import get_verified_user
@@ -42,13 +41,14 @@ def get_my_provider_stats(
 
     now = datetime.now(timezone.utc)
     year, month = now.year, now.month
-    _, days_in_month = monthrange(year, month)
     month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
 
     uptime_data = ProviderService.calculate_uptime(db, provider, now, month_start)
+    goal = ProviderService.calculate_uptime_goal(provider, now)
 
-    days_elapsed = now.day
-    required_hours_total = days_elapsed * 8
+    required_hours_total = goal["required_hours_total"]
+    hours_done = uptime_data["month_hours"]
+    hours_remaining = max(0, round(required_hours_total - hours_done, 1))
 
     global_generations_month = (
         db.query(func.count(ProviderJob.id))
@@ -104,10 +104,11 @@ def get_my_provider_stats(
             "last_24h_hours": uptime_data["last_24h_hours"],
             "last_24h_target": 8,
             "is_online": uptime_data["is_online"],
-            "month_hours": uptime_data["month_hours"],
+            "month_hours": hours_done,
             "month_required_hours": required_hours_total,
+            "month_hours_remaining": hours_remaining,
             "month_progress_pct": (
-                round((uptime_data["month_hours"] / required_hours_total) * 100, 1)
+                round((hours_done / required_hours_total) * 100, 1)
                 if required_hours_total > 0
                 else 0
             ),
@@ -132,8 +133,8 @@ def get_my_provider_stats(
         "period": {
             "year": year,
             "month": month,
-            "days_elapsed": days_elapsed,
-            "days_in_month": days_in_month,
+            "days_elapsed": now.day,
+            "days_in_month": goal["days_in_month"],
         },
     }
 

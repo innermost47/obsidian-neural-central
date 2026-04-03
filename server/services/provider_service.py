@@ -609,7 +609,7 @@ class ProviderService:
         provider: Provider,
         now: datetime,
         month_start: datetime,
-        preloaded_stats: list = None,  # ← optionnel pour le batch
+        preloaded_stats: list = None,
     ) -> dict:
         from server.core.database import ProviderDailyStats
 
@@ -646,4 +646,31 @@ class ProviderService:
             ),
             "last_24h_hours": round(minutes_24h / 60, 1),
             "is_online": provider.is_online,
+        }
+
+    @staticmethod
+    def calculate_uptime_goal(provider: Provider, now: datetime) -> dict:
+        from calendar import monthrange
+
+        year, month = now.year, now.month
+        _, days_in_month = monthrange(year, month)
+
+        month_start_date = now.replace(day=1).date()
+        provider_join_date = (
+            provider.created_at.date() if provider.created_at else month_start_date
+        )
+        effective_start = max(provider_join_date, month_start_date)
+
+        days_active_this_month = (now.date() - effective_start).days + 1
+        days_remaining_in_month = days_in_month - now.day
+        total_active_days = days_active_this_month + days_remaining_in_month
+
+        required_hours_total = round(total_active_days * 8 * 0.8, 1)
+
+        return {
+            "required_hours_total": required_hours_total,
+            "days_active_this_month": days_active_this_month,
+            "days_remaining_in_month": days_remaining_in_month,
+            "total_active_days": total_active_days,
+            "days_in_month": days_in_month,
         }
