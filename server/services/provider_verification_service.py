@@ -11,6 +11,7 @@ from scipy.spatial.distance import cosine
 from sqlalchemy.orm import Session
 from server.config import settings
 
+
 logger = logging.getLogger(__name__)
 
 
@@ -296,6 +297,7 @@ class ProviderVerificationService:
         model: str,
     ) -> None:
         from server.core.database import VerificationSample
+        from server.services.provider_service import ProviderService
 
         existing_count = (
             db.query(VerificationSample)
@@ -326,6 +328,11 @@ class ProviderVerificationService:
             )
             if not result or not result.get("wav"):
                 logger.warning(f"  ⚠️  Trusted failed to generate sample '{s_prompt}'")
+                continue
+            if not ProviderService._validate_wav_ffmpeg(result["wav"]):
+                logger.warning(
+                    f"  ⚠️  Trusted returned invalid WAV for sample '{s_prompt}'"
+                )
                 continue
             fp = ProviderVerificationService._get_mel_fingerprint(
                 result["wav"], s_duration
@@ -463,6 +470,7 @@ class ProviderVerificationService:
         seed: int,
         report: Dict,
     ) -> None:
+        from server.services.provider_service import ProviderService
 
         if isinstance(result, Exception) or result is None:
             logger.warning(f"  ❌ {provider.name} — no response")
@@ -491,6 +499,31 @@ class ProviderVerificationService:
 
         wav = result.get("wav")
         provider_model = result.get("model", "unknown")
+
+        if not ProviderService._validate_wav_ffmpeg(wav):
+            logger.warning(f"  ❌ {provider.name} — WAV failed ffmpeg validation")
+            report["failed"] += 1
+            should_ban = ProviderVerificationService._flag_provider(db, provider.id)
+            ProviderVerificationService._save_result(
+                db, provider.id, prompt, seed, None, False
+            )
+            if should_ban:
+                ProviderVerificationService._ban_provider(
+                    db,
+                    provider.id,
+                    f"Proof-of-work: {settings.MAX_CONSECUTIVE_FAILS} consecutive invalid WAV responses",
+                )
+            report["results"].append(
+                {
+                    "provider_id": provider.id,
+                    "provider_name": provider.name,
+                    "model": provider_model,
+                    "similarity": None,
+                    "passed": False,
+                    "note": "invalid_wav",
+                }
+            )
+            return
         fp = ProviderVerificationService._get_mel_fingerprint(wav, reference_duration)
 
         if fp is None:
