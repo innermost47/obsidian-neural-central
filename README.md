@@ -42,7 +42,7 @@ FastAPI central server
 | -------------------------- | ------- | ------------------------------------------------ |
 | `PLATFORM_FEE_PCT`         | `0.15`  | Platform fee (15%) — covers fal.ai + hosting     |
 | `PING_PROBABILITY`         | `0.60`  | Probability of ping each hour                    |
-| `MIN_UPTIME_SCORE`         | `0.60`  | Minimum uptime to be eligible                    |
+| `MIN_UPTIME_SCORE`         | `0.80`  | Minimum uptime to be eligible                    |
 | `MIN_BILLABLE_JOBS`        | `1`     | Minimum real jobs in the month                   |
 | `RANDOM_DELAY_MAX_MINUTES` | `50`    | Max random delay before ping execution           |
 | `PING_TIMEOUT`             | `5.0`   | Ping timeout in seconds                          |
@@ -116,7 +116,7 @@ provider_verifications
 
 A provider is eligible if:
 
-1. **uptime_score ≥ 60%** — responded to at least 60% of random pings that month
+1. **uptime_score ≥ 80%** — responded to at least 80% of random pings that month
 2. **billable_jobs ≥ 1** — processed at least 1 real job (not fal.ai fallback) that month
 
 If no provider is eligible, no redistribution occurs.
