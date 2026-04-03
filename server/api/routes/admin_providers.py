@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, Header
 from sqlalchemy.orm import Session
-from sqlalchemy import desc
+from sqlalchemy import desc, func
 import hashlib
 import stripe
 from datetime import datetime, timezone
@@ -40,10 +40,11 @@ async def list_providers(
     from server.core.database import ProviderDailyStats
 
     providers = db.query(Provider).order_by(desc(Provider.created_at)).all()
+    provider_ids = [p.id for p in providers]
 
     now = datetime.now(timezone.utc)
+    year, month = now.year, now.month
     month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
-    provider_ids = [p.id for p in providers]
 
     all_stats = (
         db.query(ProviderDailyStats)
@@ -53,10 +54,23 @@ async def list_providers(
         )
         .all()
     )
-
     stats_by_provider = {}
     for s in all_stats:
         stats_by_provider.setdefault(s.provider_id, []).append(s)
+
+    jobs_this_month = (
+        db.query(ProviderJob.provider_id, func.count(ProviderJob.id))
+        .filter(
+            ProviderJob.provider_id.in_(provider_ids),
+            ProviderJob.status == "done",
+            ProviderJob.used_fallback == False,
+            func.extract("year", ProviderJob.created_at) == year,
+            func.extract("month", ProviderJob.created_at) == month,
+        )
+        .group_by(ProviderJob.provider_id)
+        .all()
+    )
+    jobs_by_provider = {provider_id: count for provider_id, count in jobs_this_month}
 
     return {
         "providers": [
@@ -70,9 +84,9 @@ async def list_providers(
                 "is_banned": p.is_banned,
                 "ban_reason": p.ban_reason,
                 "jobs_done": p.jobs_done,
+                "jobs_done_this_month": jobs_by_provider.get(p.id, 0),
                 "jobs_failed": p.jobs_failed,
                 "billable_jobs": p.billable_jobs,
-                "uptime_score": p.uptime_score,
                 "uptime": ProviderService.calculate_uptime(
                     db,
                     p,
