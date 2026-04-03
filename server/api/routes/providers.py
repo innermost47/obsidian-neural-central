@@ -44,11 +44,6 @@ def get_my_provider_stats(
     month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
 
     uptime_data = ProviderService.calculate_uptime(db, provider, now, month_start)
-    goal = ProviderService.calculate_uptime_goal(provider, now)
-
-    required_hours_total = goal["required_hours_total"]
-    hours_done = uptime_data["month_hours"]
-    hours_remaining = max(0, round(required_hours_total - hours_done, 1))
 
     global_generations_month = (
         db.query(func.count(ProviderJob.id))
@@ -118,14 +113,10 @@ def get_my_provider_stats(
             "last_24h_hours": uptime_data["last_24h_hours"],
             "last_24h_target": 8,
             "is_online": uptime_data["is_online"],
-            "month_hours": hours_done,
-            "month_required_hours": required_hours_total,
-            "month_hours_remaining": hours_remaining,
-            "month_progress_pct": (
-                round((hours_done / required_hours_total) * 100, 1)
-                if required_hours_total > 0
-                else 0
-            ),
+            "month_hours": uptime_data["month_hours"],
+            "month_required_hours": uptime_data["required_hours_total"],
+            "month_hours_remaining": uptime_data["month_hours_remaining"],
+            "month_progress_pct": uptime_data["month_progress_pct"],
         },
         "network": {
             "global_generations_this_month": global_generations_month,
@@ -148,7 +139,7 @@ def get_my_provider_stats(
             "year": year,
             "month": month,
             "days_elapsed": now.day,
-            "days_in_month": goal["days_in_month"],
+            "days_in_month": uptime_data["days_in_month"],
         },
     }
 
