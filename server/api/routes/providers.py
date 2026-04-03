@@ -16,7 +16,10 @@ from server.api.dependencies import get_verified_user
 from server.config import settings
 from server.core.websocket_manager import manager
 from server.services.provider_service import ProviderService
-from server.services.integrity_service import verify_provider_hash
+from server.services.integrity_service import (
+    verify_provider_hash,
+    get_github_file_content,
+)
 
 router = APIRouter(prefix="/providers", tags=["Providers"])
 
@@ -207,6 +210,8 @@ async def websocket_endpoint(
         return
 
     x_provider_hash = websocket.headers.get("x-provider-hash", "")
+    print(f"[WS] x_provider_hash reçu: '{x_provider_hash}'")
+    print(f"[WS] github content loaded: {get_github_file_content() is not None}")
     if not verify_provider_hash(
         x_provider_hash,
         provider.api_key,
