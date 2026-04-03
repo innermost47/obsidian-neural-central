@@ -44,7 +44,7 @@ class ProviderVerificationService:
         try:
             async with httpx.AsyncClient(timeout=settings.VERIFY_TIMEOUT) as client:
                 response = await client.post(
-                    f"{provider_url.rstrip('/')}/verify",
+                    f"{provider_url.rstrip('/')}/generate",
                     headers={
                         "Content-Type": "application/json",
                         "X-API-Key": server_api_key,

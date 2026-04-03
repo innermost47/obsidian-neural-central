@@ -234,6 +234,7 @@ class ProviderService:
                 p.is_generating = True
                 db.commit()
             print(f"🎵 Sending generation to provider: {provider['name']}")
+            seed = random.randint(0, 2**31 - 1)
             async with httpx.AsyncClient(timeout=GENERATE_TIMEOUT) as client:
                 response = await client.post(
                     f"{provider['url'].rstrip('/')}/generate",
@@ -241,10 +242,7 @@ class ProviderService:
                         **settings.BROWSER_HEADERS,
                         "X-API-Key": provider["server_api_key"],
                     },
-                    json={
-                        "prompt": prompt,
-                        "duration": duration,
-                    },
+                    json={"prompt": prompt, "duration": duration, "seed": seed},
                 )
 
                 if response.status_code != 200:

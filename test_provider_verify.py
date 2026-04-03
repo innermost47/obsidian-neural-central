@@ -240,7 +240,7 @@ async def test_verify_determinism(
         try:
             t0 = time.time()
             r = await client.post(
-                f"{url}/verify",
+                f"{url}/generate",
                 json={"prompt": prompt, "seed": seed, "duration": duration},
                 timeout=DEFAULT_TIMEOUT,
                 headers=headers,
@@ -381,7 +381,7 @@ async def test_divergence(
         try:
             t0 = time.time()
             r = await client.post(
-                f"{url}/verify",
+                f"{url}/generate",
                 json={"prompt": prompt, "seed": seed, "duration": duration},
                 timeout=DEFAULT_TIMEOUT,
                 headers=headers,
