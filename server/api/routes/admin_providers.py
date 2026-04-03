@@ -3,6 +3,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import desc
 import hashlib
 import stripe
+from datetime import datetime, timezone
 from server.config import settings
 from server.core.database import get_db, User, Provider, ProviderJob
 from server.api.dependencies import get_verified_user
@@ -36,8 +37,26 @@ async def list_providers(
     db: Session = Depends(get_db),
     _: User = Depends(get_admin_user),
 ):
+    from server.core.database import ProviderDailyStats
 
     providers = db.query(Provider).order_by(desc(Provider.created_at)).all()
+
+    now = datetime.now(timezone.utc)
+    month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    provider_ids = [p.id for p in providers]
+
+    all_stats = (
+        db.query(ProviderDailyStats)
+        .filter(
+            ProviderDailyStats.provider_id.in_(provider_ids),
+            ProviderDailyStats.date >= month_start.date(),
+        )
+        .all()
+    )
+
+    stats_by_provider = {}
+    for s in all_stats:
+        stats_by_provider.setdefault(s.provider_id, []).append(s)
 
     return {
         "providers": [
@@ -54,6 +73,13 @@ async def list_providers(
                 "jobs_failed": p.jobs_failed,
                 "billable_jobs": p.billable_jobs,
                 "uptime_score": p.uptime_score,
+                "uptime": ProviderService.calculate_uptime(
+                    db,
+                    p,
+                    now,
+                    month_start,
+                    preloaded_stats=stats_by_provider.get(p.id, []),
+                ),
                 "user_email": p.user.email if p.user else None,
                 "last_ping": p.last_ping.isoformat() if p.last_ping else None,
                 "last_seen": p.last_seen.isoformat() if p.last_seen else None,
@@ -104,6 +130,10 @@ async def get_provider(
     if not provider:
         raise HTTPException(status_code=404, detail="Provider not found")
 
+    now = datetime.now(timezone.utc)
+    month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    uptime_data = ProviderService.calculate_uptime(db, provider, now, month_start)
+
     recent_jobs = (
         db.query(ProviderJob)
         .filter(ProviderJob.provider_id == provider_id)
@@ -126,6 +156,7 @@ async def get_provider(
             "billable_jobs": provider.billable_jobs,
             "user_email": provider.user.email if provider.user else None,
             "uptime_score": provider.uptime_score,
+            "uptime": uptime_data,
             "last_ping": provider.last_ping.isoformat() if provider.last_ping else None,
             "last_seen": provider.last_seen.isoformat() if provider.last_seen else None,
             "created_at": (

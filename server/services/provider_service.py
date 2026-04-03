@@ -7,7 +7,7 @@ import hashlib
 import subprocess
 import secrets
 import string
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from typing import Optional, Dict, Any
 from sqlalchemy.orm import Session
 from collections import defaultdict
@@ -602,3 +602,48 @@ class ProviderService:
         except Exception as e:
             print(f"❌ Error updating daily stats for provider {provider_id}: {e}")
             db.rollback()
+
+    @staticmethod
+    def calculate_uptime(
+        db: Session,
+        provider: Provider,
+        now: datetime,
+        month_start: datetime,
+        preloaded_stats: list = None,  # ← optionnel pour le batch
+    ) -> dict:
+        from server.core.database import ProviderDailyStats
+
+        if preloaded_stats is not None:
+            stats_month = preloaded_stats
+        else:
+            stats_month = (
+                db.query(ProviderDailyStats)
+                .filter(
+                    ProviderDailyStats.provider_id == provider.id,
+                    ProviderDailyStats.date >= month_start.date(),
+                )
+                .all()
+            )
+
+        total_minutes_base = sum(s.total_presence_minutes for s in stats_month)
+
+        current_session_minutes = 0
+        if provider.is_online and provider.last_seen:
+            last_seen_val = provider.last_seen
+            if last_seen_val.tzinfo is None:
+                last_seen_val = last_seen_val.replace(tzinfo=timezone.utc)
+            current_session_minutes = max(0, (now - last_seen_val).total_seconds() / 60)
+
+        yesterday = (now - timedelta(days=1)).date()
+        minutes_24h = (
+            sum(s.total_presence_minutes for s in stats_month if s.date >= yesterday)
+            + current_session_minutes
+        )
+
+        return {
+            "month_hours": round(
+                (total_minutes_base + current_session_minutes) / 60, 1
+            ),
+            "last_24h_hours": round(minutes_24h / 60, 1),
+            "is_online": provider.is_online,
+        }

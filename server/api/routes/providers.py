@@ -9,7 +9,7 @@ from fastapi import (
 import asyncio
 from sqlalchemy.orm import Session
 from sqlalchemy import func
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timezone
 from calendar import monthrange
 import hashlib
 from server.core.database import get_db, User, Provider, ProviderJob
@@ -23,46 +23,6 @@ router = APIRouter(prefix="/providers", tags=["Providers"])
 
 class TimeoutError(Exception):
     pass
-
-
-def calculate_uptime(
-    db: Session, provider: Provider, now: datetime, month_start: datetime
-):
-    from server.core.database import ProviderDailyStats
-
-    stats_month = (
-        db.query(ProviderDailyStats)
-        .filter(
-            ProviderDailyStats.provider_id == provider.id,
-            ProviderDailyStats.date >= month_start.date(),
-        )
-        .all()
-    )
-
-    total_minutes_base = sum(s.total_presence_minutes for s in stats_month)
-
-    current_session_minutes = 0
-    if provider.is_online and provider.last_seen:
-        last_seen_val = provider.last_seen
-        if last_seen_val.tzinfo is None:
-            last_seen_val = last_seen_val.replace(tzinfo=timezone.utc)
-
-        diff = now - last_seen_val
-        current_session_minutes = max(0, diff.total_seconds() / 60)
-
-    total_minutes_month = total_minutes_base + current_session_minutes
-    month_hours = round(total_minutes_month / 60, 1)
-    yesterday = (now - timedelta(days=1)).date()
-    total_minutes_24h_base = sum(
-        s.total_presence_minutes for s in stats_month if s.date >= yesterday
-    )
-    last_24h_hours = round((total_minutes_24h_base + current_session_minutes) / 60, 1)
-
-    return {
-        "month_hours": month_hours,
-        "last_24h_hours": last_24h_hours,
-        "is_online": provider.is_online,
-    }
 
 
 @router.get("/my-stats")
@@ -85,7 +45,7 @@ def get_my_provider_stats(
     _, days_in_month = monthrange(year, month)
     month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
 
-    uptime_data = calculate_uptime(db, provider, now, month_start)
+    uptime_data = ProviderService.calculate_uptime(db, provider, now, month_start)
 
     days_elapsed = now.day
     required_hours_total = days_elapsed * 8
