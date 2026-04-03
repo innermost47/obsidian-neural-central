@@ -7,6 +7,7 @@ from typing import List, Dict, Optional
 from sqlalchemy.orm import Session
 from server.config import settings
 from server.core.security import decrypt_server_key
+from server.services.integrity_service import verify_provider_hash
 
 
 class ProviderPingService:
@@ -76,8 +77,18 @@ class ProviderPingService:
                         if key_hash == provider.api_key:
                             responded = True
                         else:
-                            print(f"⚠️ {provider.name} — invalid API key")
-                            responded = False
+                            provider_hash = response.headers.get("x-provider-hash", "")
+                            if not verify_provider_hash(
+                                provider_hash,
+                                provider.api_key,
+                                provider.encoded_server_auth_key,
+                            ):
+                                print(
+                                    f"⚠️ {provider.name} — code integrity check failed on ping"
+                                )
+                                responded = False
+                            else:
+                                responded = True
                     else:
                         responded = False
                     t1 = asyncio.get_event_loop().time()

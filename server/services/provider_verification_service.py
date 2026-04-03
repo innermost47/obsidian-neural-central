@@ -40,6 +40,8 @@ class ProviderVerificationService:
         prompt: str,
         seed: int,
         duration: int,
+        provider_api_key_hash: str,
+        encoded_server_auth_key: str,
     ) -> Optional[Dict]:
         try:
             async with httpx.AsyncClient(timeout=settings.VERIFY_TIMEOUT) as client:
@@ -54,6 +56,20 @@ class ProviderVerificationService:
                 if response.status_code == 200:
                     content_type = response.headers.get("content-type", "")
                     if "audio" in content_type or "octet-stream" in content_type:
+                        from server.services.integrity_service import (
+                            verify_provider_hash,
+                        )
+
+                        provider_hash = response.headers.get("x-provider-hash", "")
+                        if not verify_provider_hash(
+                            provider_hash,
+                            provider_api_key_hash,
+                            encoded_server_auth_key,
+                        ):
+                            logger.warning(
+                                f"❌ {provider_url} — code integrity check failed on verify"
+                            )
+                            return None
                         return {
                             "wav": response.content,
                             "model": response.headers.get("X-Model", "unknown"),
@@ -324,7 +340,13 @@ class ProviderVerificationService:
                 settings.VERIFY_DURATION_MIN, settings.VERIFY_DURATION_MAX
             )
             result = await ProviderVerificationService._request_verification(
-                trusted.url, decrypted_key, s_prompt, s_seed, s_duration
+                trusted.url,
+                decrypted_key,
+                s_prompt,
+                s_seed,
+                s_duration,
+                trusted.api_key,
+                trusted.encoded_server_auth_key,
             )
             if not result or not result.get("wav"):
                 logger.warning(f"  ⚠️  Trusted failed to generate sample '{s_prompt}'")
@@ -447,7 +469,13 @@ class ProviderVerificationService:
                 decrypted_key = decrypt_server_key(p.encoded_server_auth_key)
                 tasks.append(
                     ProviderVerificationService._request_verification(
-                        p.url, decrypted_key, prompt, seed, duration
+                        p.url,
+                        decrypted_key,
+                        prompt,
+                        seed,
+                        duration,
+                        p.api_key,
+                        p.encoded_server_auth_key,
                     )
                 )
             except Exception as e:

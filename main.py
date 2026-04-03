@@ -26,7 +26,10 @@ from server.api.routes import (
     unsubscribe,
 )
 from server.services.provider_verification_service import ProviderVerificationService
-
+from server.services.integrity_service import (
+    initialize_provider_hash,
+    refresh_expected_provider_hash,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -64,6 +67,15 @@ async def lifespan(app: FastAPI):
     finally:
         db.close()
 
+    from server.services.integrity_service import (
+        initialize_provider_hash,
+        refresh_expected_provider_hash,
+    )
+
+    await initialize_provider_hash()
+    asyncio.create_task(refresh_expected_provider_hash())
+    logger.info("✅ Provider integrity service started")
+
     provider_scheduler = None
     try:
         from apscheduler.schedulers.asyncio import AsyncIOScheduler
@@ -78,11 +90,8 @@ async def lifespan(app: FastAPI):
             misfire_grace_time=60,
             coalesce=True,
         )
-
         provider_scheduler.start()
-
         asyncio.create_task(run_provider_verification_forever())
-
         logger.info("✅ Provider verification loop started (random interval 1h–5h)")
         logger.info("✅ Provider ping scheduler started.")
     except Exception as e:
