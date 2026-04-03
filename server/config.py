@@ -70,6 +70,7 @@ class Settings:
     RANDOM_DELAY_MAX_MINUTES = int(os.getenv("RANDOM_DELAY_MAX_MINUTES", "50"))
     PLATFORM_FEE_PCT = float(os.getenv("PLATFORM_FEE_PCT", "0.15"))
     SERVER_PROVIDER_ENCRYPTION_KEY = os.getenv("SERVER_PROVIDER_ENCRYPTION_KEY")
+    SAMPLE_ENCRYPTION_KEY = os.getenv("SAMPLE_ENCRYPTION_KEY")
 
     BROWSER_HEADERS = {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
@@ -104,6 +105,87 @@ class Settings:
         },
         "payment_method": "if_required",
     }
+
+    VERIFY_TIMEOUT = float(os.getenv("VERIFY_TIMEOUT", "120.0"))
+    VERIFY_POOL_PCT = float(os.getenv("VERIFY_POOL_PCT", "0.30"))
+    SIMILARITY_THRESHOLD = float(os.getenv("SIMILARITY_THRESHOLD", "0.98"))
+    MAX_CONSECUTIVE_FAILS = int(os.getenv("MAX_CONSECUTIVE_FAILS", "3"))
+    VERIFY_DURATION = int(os.getenv("VERIFY_DURATION", "5"))
+
+    VERIFY_INTERVAL_MIN = int(os.getenv("VERIFY_INTERVAL_MIN", str(1 * 3600)))
+    VERIFY_INTERVAL_MAX = int(os.getenv("VERIFY_INTERVAL_MAX", str(5 * 3600)))
+
+    TRUSTED_SAMPLE_TARGET = int(os.getenv("TRUSTED_SAMPLE_TARGET", "5"))
+    WAIT_FOR_FREE_TIMEOUT = int(os.getenv("WAIT_FOR_FREE_TIMEOUT", str(10 * 60)))
+    WAIT_FOR_FREE_POLL_INTERVAL = int(os.getenv("WAIT_FOR_FREE_POLL_INTERVAL", "15"))
+
+    VERIFICATION_PROMPTS = [
+        "steady kick drum loop 120bpm",
+        "hi-hat pattern 120bpm",
+        "clap snare pattern 90bpm",
+        "rhythmic click track 100bpm",
+        "deep punchy kick drum hit",
+        "fast snare roll",
+        "shaker groove loop",
+        "rimshot pattern 140bpm",
+        "conga rhythm loop",
+        "tambourine steady beat",
+        "open hi-hat swing groove",
+        "cowbell pattern disco",
+        "tribal drum circle rhythm",
+        "breakbeat loop 95bpm",
+        "trap hi-hat triplet pattern",
+        "low bass drone",
+        "deep sub bass pulse",
+        "smooth bass guitar riff",
+        "modular synth bass sequence",
+        "dark ambient drone texture",
+        "low frequency rumble",
+        "sustained cello bass note",
+        "upright bass walking line",
+        "808 bass hit",
+        "synth bass arpeggio minor",
+        "simple piano note C major",
+        "electric piano chord Fmaj7",
+        "mellow guitar strum Am",
+        "soft flute melody",
+        "sustained string pad",
+        "warm Rhodes chord",
+        "vibraphone single note",
+        "nylon guitar pluck",
+        "music box melody short",
+        "marimba phrase",
+        "harp arpeggio",
+        "organ chord sustained",
+        "banjo picking pattern",
+        "steel drum hit",
+        "hammered dulcimer note",
+        "simple sine wave 440hz",
+        "white noise sweep",
+        "ambient wind texture",
+        "short percussive hit",
+        "analog synth pad warm",
+        "FM bell tone",
+        "granular texture shimmer",
+        "choir aaah vowel",
+        "distant thunder rumble",
+        "vinyl crackle loop",
+        "tape hiss texture",
+        "glass harmonica tone",
+        "crystal bowl resonance",
+        "rain on window ambient",
+        "soft underwater bubbles",
+        "reverse cymbal swell",
+        "riser synth sweep up",
+        "white noise downlifter",
+        "laser zap sound effect",
+        "camera shutter click",
+        "door creak short",
+        "water drop single",
+        "wind chime gentle",
+        "typewriter keystroke",
+        "match strike spark",
+    ]
 
     @property
     def TIER_PRICES_EUR(self) -> dict:

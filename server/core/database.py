@@ -243,6 +243,9 @@ class Provider(Base):
     last_seen = Column(DateTime, nullable=True)
     created_at = Column(DateTime, default=func.now())
     verification_failures = Column(Integer, nullable=False, default=0)
+    is_trusted = Column(Boolean, default=False, nullable=False)
+    is_generating = Column(Boolean, default=False, nullable=False)
+    is_disposable = Column(Boolean, default=True, nullable=False)
     encoded_server_auth_key = Column(String(500), nullable=True)
     user_id = Column(
         Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True
@@ -312,6 +315,32 @@ class ProviderVerification(Base):
     verified_at = Column(DateTime, nullable=False)
 
     provider = relationship("Provider", back_populates="verifications")
+
+
+class VerificationSample(Base):
+    __tablename__ = "verification_samples"
+
+    id = Column(Integer, primary_key=True, index=True)
+    prompt = Column(String(255), nullable=False)
+    seed = Column(BigInteger, nullable=False)
+    model = Column(String(255), nullable=False)
+    encrypted_fingerprint = Column(Text, nullable=False)
+    created_at = Column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        nullable=False,
+        index=True,
+    )
+
+    __table_args__ = (
+        UniqueConstraint(
+            "prompt", "seed", "model", name="_sample_prompt_seed_model_uc"
+        ),
+        Index("idx_sample_model", "model"),
+    )
+
+    def __repr__(self):
+        return f"<VerificationSample prompt='{self.prompt[:30]}' seed={self.seed} model={self.model}>"
 
 
 class OwnershipLog(Base):

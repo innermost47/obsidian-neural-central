@@ -5,6 +5,7 @@ import secrets
 import pyotp
 import qrcode
 import io
+import numpy as np
 import base64
 import bcrypt
 from server.config import settings
@@ -13,6 +14,30 @@ from cryptography.fernet import Fernet
 _cipher = None
 
 _server_cipher = None
+
+_sample_cipher = None
+
+
+def get_sample_cipher():
+    global _sample_cipher
+    if _sample_cipher is None:
+        key = getattr(settings, "SAMPLE_ENCRYPTION_KEY", None)
+        if not key:
+            raise ValueError("SAMPLE_ENCRYPTION_KEY not set in environment")
+        _sample_cipher = Fernet(key.encode())
+    return _sample_cipher
+
+
+def encrypt_fingerprint(fingerprint: np.ndarray) -> str:
+    cipher = get_sample_cipher()
+    raw_bytes = fingerprint.astype(np.float32).tobytes()
+    return cipher.encrypt(raw_bytes).decode()
+
+
+def decrypt_fingerprint(encrypted: str) -> np.ndarray:
+    cipher = get_sample_cipher()
+    raw_bytes = cipher.decrypt(encrypted.encode())
+    return np.frombuffer(raw_bytes, dtype=np.float32).copy()
 
 
 def get_server_cipher():

@@ -1,11 +1,9 @@
 import asyncio
-from collections import defaultdict
 import io
 import logging
-import os
 import random
 from datetime import datetime, timezone
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, Optional, Tuple
 import httpx
 import librosa
 import numpy as np
@@ -15,83 +13,6 @@ from server.config import settings
 
 logger = logging.getLogger(__name__)
 
-VERIFY_TIMEOUT = float(os.getenv("VERIFY_TIMEOUT", "120.0"))
-VERIFY_POOL_PCT = float(os.getenv("VERIFY_POOL_PCT", "0.30"))
-SIMILARITY_THRESHOLD = float(os.getenv("SIMILARITY_THRESHOLD", "0.98"))
-MAX_CONSECUTIVE_FAILS = int(os.getenv("MAX_CONSECUTIVE_FAILS", "3"))
-VERIFY_DURATION = int(os.getenv("VERIFY_DURATION", "5"))
-
-VERIFY_INTERVAL_MIN = int(os.getenv("VERIFY_INTERVAL_MIN", str(1 * 3600)))
-VERIFY_INTERVAL_MAX = int(os.getenv("VERIFY_INTERVAL_MAX", str(5 * 3600)))
-
-VERIFICATION_PROMPTS = [
-    "steady kick drum loop 120bpm",
-    "hi-hat pattern 120bpm",
-    "clap snare pattern 90bpm",
-    "rhythmic click track 100bpm",
-    "deep punchy kick drum hit",
-    "fast snare roll",
-    "shaker groove loop",
-    "rimshot pattern 140bpm",
-    "conga rhythm loop",
-    "tambourine steady beat",
-    "open hi-hat swing groove",
-    "cowbell pattern disco",
-    "tribal drum circle rhythm",
-    "breakbeat loop 95bpm",
-    "trap hi-hat triplet pattern",
-    "low bass drone",
-    "deep sub bass pulse",
-    "smooth bass guitar riff",
-    "modular synth bass sequence",
-    "dark ambient drone texture",
-    "low frequency rumble",
-    "sustained cello bass note",
-    "upright bass walking line",
-    "808 bass hit",
-    "synth bass arpeggio minor",
-    "simple piano note C major",
-    "electric piano chord Fmaj7",
-    "mellow guitar strum Am",
-    "soft flute melody",
-    "sustained string pad",
-    "warm Rhodes chord",
-    "vibraphone single note",
-    "nylon guitar pluck",
-    "music box melody short",
-    "marimba phrase",
-    "harp arpeggio",
-    "organ chord sustained",
-    "banjo picking pattern",
-    "steel drum hit",
-    "hammered dulcimer note",
-    "simple sine wave 440hz",
-    "white noise sweep",
-    "ambient wind texture",
-    "short percussive hit",
-    "analog synth pad warm",
-    "FM bell tone",
-    "granular texture shimmer",
-    "choir aaah vowel",
-    "distant thunder rumble",
-    "vinyl crackle loop",
-    "tape hiss texture",
-    "glass harmonica tone",
-    "crystal bowl resonance",
-    "rain on window ambient",
-    "soft underwater bubbles",
-    "reverse cymbal swell",
-    "riser synth sweep up",
-    "white noise downlifter",
-    "laser zap sound effect",
-    "camera shutter click",
-    "door creak short",
-    "water drop single",
-    "wind chime gentle",
-    "typewriter keystroke",
-    "match strike spark",
-]
-
 
 class ProviderVerificationService:
 
@@ -99,27 +20,19 @@ class ProviderVerificationService:
     def _get_mel_fingerprint(wav_bytes: bytes) -> Optional[np.ndarray]:
         try:
             buf = io.BytesIO(wav_bytes)
-            y, sr = librosa.load(buf, sr=22050, mono=True, duration=VERIFY_DURATION)
-
-            mel = librosa.feature.melspectrogram(
-                y=y,
-                sr=sr,
-                n_mels=128,
-                fmax=8000,
+            y, sr = librosa.load(
+                buf, sr=22050, mono=True, duration=settings.VERIFY_DURATION
             )
+            mel = librosa.feature.melspectrogram(y=y, sr=sr, n_mels=128, fmax=8000)
             mel_db = librosa.power_to_db(mel, ref=np.max)
-
-            fingerprint = mel_db.mean(axis=1)
-            return fingerprint
-
+            return mel_db.mean(axis=1).astype(np.float32)
         except Exception as e:
             logger.error(f"Failed to compute mel fingerprint: {e}")
             return None
 
     @staticmethod
     def _cosine_similarity(a: np.ndarray, b: np.ndarray) -> float:
-        dist = cosine(a, b)
-        return round(1.0 - dist, 4)
+        return round(1.0 - float(cosine(a, b)), 4)
 
     @staticmethod
     async def _request_verification(
@@ -130,7 +43,7 @@ class ProviderVerificationService:
         duration: int,
     ) -> Optional[Dict]:
         try:
-            async with httpx.AsyncClient(timeout=VERIFY_TIMEOUT) as client:
+            async with httpx.AsyncClient(timeout=settings.VERIFY_TIMEOUT) as client:
                 response = await client.post(
                     f"{provider_url.rstrip('/')}/verify",
                     headers={
@@ -153,19 +66,78 @@ class ProviderVerificationService:
             return None
 
     @staticmethod
+    def _store_sample(
+        db: Session,
+        prompt: str,
+        seed: int,
+        model: str,
+        fingerprint: np.ndarray,
+    ) -> bool:
+        from server.core.database import VerificationSample
+        from server.core.security import encrypt_fingerprint
+
+        existing = (
+            db.query(VerificationSample)
+            .filter(
+                VerificationSample.prompt == prompt,
+                VerificationSample.seed == seed,
+                VerificationSample.model == model,
+            )
+            .first()
+        )
+        if existing:
+            return False
+
+        sample = VerificationSample(
+            prompt=prompt,
+            seed=seed,
+            model=model,
+            encrypted_fingerprint=encrypt_fingerprint(fingerprint),
+        )
+        db.add(sample)
+        db.commit()
+        logger.info(
+            f"📦 Sample stored — prompt: '{prompt}' seed: {seed} model: {model}"
+        )
+        return True
+
+    @staticmethod
+    def _get_sample(
+        db: Session,
+        prompt: str,
+        seed: int,
+        model: str,
+    ) -> Optional[np.ndarray]:
+        from server.core.database import VerificationSample
+        from server.core.security import decrypt_fingerprint
+
+        sample = (
+            db.query(VerificationSample)
+            .filter(
+                VerificationSample.prompt == prompt,
+                VerificationSample.seed == seed,
+                VerificationSample.model == model,
+            )
+            .first()
+        )
+        if not sample:
+            return None
+        try:
+            return decrypt_fingerprint(sample.encrypted_fingerprint)
+        except Exception as e:
+            logger.error(f"Failed to decrypt sample fingerprint: {e}")
+            return None
+
+    @staticmethod
     def _flag_provider(db: Session, provider_id: int) -> bool:
         from server.core.database import Provider
 
         provider = db.query(Provider).filter(Provider.id == provider_id).first()
         if not provider:
             return False
-
         provider.verification_failures = (provider.verification_failures or 0) + 1
         db.commit()
-
-        if provider.verification_failures >= MAX_CONSECUTIVE_FAILS:
-            return True
-        return False
+        return provider.verification_failures >= settings.MAX_CONSECUTIVE_FAILS
 
     @staticmethod
     def _reset_failures(db: Session, provider_id: int):
@@ -218,187 +190,531 @@ class ProviderVerificationService:
         db.commit()
 
     @staticmethod
-    async def run_verification_round(db: Session) -> Dict:
+    def _get_trusted_provider(db: Session):
         from server.core.database import Provider
-        from server.core.security import decrypt_server_key
 
-        providers = (
+        return (
             db.query(Provider)
-            .filter(Provider.is_active == True, Provider.is_banned == False)
-            .all()
+            .filter(
+                Provider.is_trusted == True,
+                Provider.is_online == True,
+                Provider.is_banned == False,
+                Provider.is_active == True,
+            )
+            .first()
         )
 
-        if len(providers) < 2:
-            logger.info("⚡ Not enough providers for verification (need ≥ 2)")
-            return {"status": "skipped", "reason": "not_enough_providers"}
+    @staticmethod
+    def _make_report(prompt: str, seed: int) -> Dict:
+        return {
+            "status": "completed",
+            "prompt": prompt,
+            "seed": seed,
+            "reference_source": None,
+            "reference_model": None,
+            "total": 0,
+            "responded": 0,
+            "failed": 0,
+            "results": [],
+        }
 
-        sample_size = max(2, int(len(providers) * VERIFY_POOL_PCT))
-        selected = random.sample(providers, min(sample_size, len(providers)))
+    @staticmethod
+    def _report_skipped(report: Dict, provider, note: str) -> None:
+        logger.warning(f"  ⏭️  {provider.name} skipped — {note}")
+        report["results"].append(
+            {
+                "provider_id": provider.id,
+                "provider_name": provider.name,
+                "model": None,
+                "similarity": None,
+                "passed": True,
+                "note": note,
+            }
+        )
 
-        seed = random.randint(0, 2**31 - 1)
-        prompt = random.choice(VERIFICATION_PROMPTS)
+    @staticmethod
+    async def _wait_and_lock_providers(
+        db: Session,
+        providers: list,
+        report: Dict,
+    ) -> list:
+        wait_results = await asyncio.gather(
+            *[
+                ProviderVerificationService._wait_for_provider_free(db, p.id, p.name)
+                for p in providers
+            ],
+            return_exceptions=True,
+        )
+
+        free_providers = []
+        for provider, is_free in zip(providers, wait_results):
+            if is_free is True:
+                free_providers.append(provider)
+            else:
+                ProviderVerificationService._report_skipped(
+                    report, provider, "skipped_busy"
+                )
+
+        lock_results = await asyncio.gather(
+            *[
+                ProviderVerificationService._lock_provider_for_test(db, p.id)
+                for p in free_providers
+            ],
+            return_exceptions=True,
+        )
+
+        locked = []
+        for provider, lock_ok in zip(free_providers, lock_results):
+            if lock_ok is True:
+                locked.append(provider)
+            else:
+                ProviderVerificationService._report_skipped(
+                    report, provider, "skipped_lock_race"
+                )
+
+        return locked
+
+    @staticmethod
+    async def _fetch_trusted_model(trusted_url: str, decrypted_key: str) -> str:
+        try:
+            async with httpx.AsyncClient(timeout=5.0) as client:
+                r = await client.get(
+                    f"{trusted_url.rstrip('/')}/status",
+                    headers={"X-API-Key": decrypted_key},
+                )
+                if r.status_code == 200:
+                    return r.json().get("model", "unknown")
+        except Exception:
+            pass
+        return "unknown"
+
+    @staticmethod
+    async def _fill_sample_bank_from_trusted(
+        db: Session,
+        trusted,
+        decrypted_key: str,
+        model: str,
+    ) -> None:
+        from server.core.database import VerificationSample
+
+        existing_count = (
+            db.query(VerificationSample)
+            .filter(VerificationSample.model == model)
+            .count()
+        )
+        needed = max(0, settings.TRUSTED_SAMPLE_TARGET - existing_count)
+
+        if needed == 0:
+            logger.info(
+                f"📦 Sample bank full ({existing_count}/{settings.TRUSTED_SAMPLE_TARGET})"
+                f"for model '{model}' — no fill needed"
+            )
+            return
 
         logger.info(
-            f"🔍 Verification round — {len(selected)}/{len(providers)} providers "
-            f"| prompt: '{prompt}' | seed: {seed}"
+            f"📦 Filling sample bank: {needed} sample(s) needed "
+            f"({existing_count}/{settings.TRUSTED_SAMPLE_TARGET}) for model '{model}'"
+        )
+        for _ in range(needed):
+            s_seed = random.randint(0, 2**31 - 1)
+            s_prompt = random.choice(settings.VERIFICATION_PROMPTS)
+            result = await ProviderVerificationService._request_verification(
+                trusted.url, decrypted_key, s_prompt, s_seed, settings.VERIFY_DURATION
+            )
+            if not result or not result.get("wav"):
+                logger.warning(f"  ⚠️  Trusted failed to generate sample '{s_prompt}'")
+                continue
+            fp = ProviderVerificationService._get_mel_fingerprint(result["wav"])
+            if fp is None:
+                logger.warning(f"  ⚠️  Bad fingerprint for sample '{s_prompt}'")
+                continue
+            ok = ProviderVerificationService._store_sample(
+                db, s_prompt, s_seed, model, fp
+            )
+            if ok:
+                logger.info(f"  ✅ Sample stored — prompt: '{s_prompt}' seed: {s_seed}")
+
+    @staticmethod
+    def _draw_reference_from_bank(
+        db: Session,
+        model_filter: Optional[str] = None,
+    ) -> Tuple[Optional[np.ndarray], Optional[str], str]:
+        from server.core.database import VerificationSample
+        from server.core.security import decrypt_fingerprint
+
+        query = db.query(VerificationSample)
+        if model_filter:
+            query = query.filter(VerificationSample.model == model_filter)
+        samples = query.all()
+
+        if not samples:
+            return None, None, "none"
+
+        chosen = random.choice(samples)
+        source = "sample_bank_random" if model_filter else "sample_bank_random_fallback"
+        try:
+            fp = decrypt_fingerprint(chosen.encrypted_fingerprint)
+            logger.info(
+                f"🎲 Reference drawn from bank — prompt: '{chosen.prompt}' "
+                f"seed: {chosen.seed} model: {chosen.model} "
+                f"(pool: {len(samples)} samples)"
+            )
+            return fp, chosen.model, source
+        except Exception as e:
+            logger.error(f"Failed to decrypt chosen sample: {e}")
+            return None, None, "none"
+
+    @staticmethod
+    async def _build_reference(
+        db: Session,
+        trusted,
+        report: Dict,
+    ) -> Tuple[Optional[np.ndarray], Optional[str], str]:
+        from server.core.security import decrypt_server_key
+
+        if not trusted:
+            return ProviderVerificationService._draw_reference_from_bank(db)
+
+        trusted_locked_list = (
+            await ProviderVerificationService._wait_and_lock_providers(
+                db, [trusted], report
+            )
+        )
+        trusted_locked = bool(trusted_locked_list)
+
+        if not trusted_locked:
+            logger.warning(
+                f"⚠️  Trusted '{trusted.name}' busy — falling back to sample bank"
+            )
+            return ProviderVerificationService._draw_reference_from_bank(db)
+
+        try:
+            decrypted_key = decrypt_server_key(trusted.encoded_server_auth_key)
+            model = await ProviderVerificationService._fetch_trusted_model(
+                trusted.url, decrypted_key
+            )
+            await ProviderVerificationService._fill_sample_bank_from_trusted(
+                db, trusted, decrypted_key, model
+            )
+            fp, ref_model, source = (
+                ProviderVerificationService._draw_reference_from_bank(
+                    db, model_filter=model
+                )
+            )
+            if fp is None:
+                logger.warning("⚠️  Sample bank still empty after fill attempt")
+            return fp, ref_model, source
+        except Exception as e:
+            logger.error(f"Failed during trusted reference phase: {e}")
+            return None, None, "none"
+        finally:
+            ProviderVerificationService._unlock_provider_after_test(db, trusted.id)
+
+    @staticmethod
+    async def _request_verifications_from_providers(
+        db: Session,
+        providers: list,
+        prompt: str,
+        seed: int,
+        report: Dict,
+    ) -> Tuple[list, list]:
+
+        from server.core.security import decrypt_server_key
+
+        locked_providers = await ProviderVerificationService._wait_and_lock_providers(
+            db, providers, report
         )
 
+        if not locked_providers:
+            return [], []
+
         tasks = []
-        for p in selected:
+        for p in locked_providers:
             try:
                 decrypted_key = decrypt_server_key(p.encoded_server_auth_key)
                 tasks.append(
                     ProviderVerificationService._request_verification(
-                        p.url, decrypted_key, prompt, seed, VERIFY_DURATION
+                        p.url, decrypted_key, prompt, seed, settings.VERIFY_DURATION
                     )
                 )
             except Exception as e:
-                logger.error(f"Failed to decrypt key for provider {p.name}: {e}")
+                logger.error(f"Failed to decrypt key for {p.name}: {e}")
                 tasks.append(asyncio.sleep(0, result=None))
 
         raw_results = await asyncio.gather(*tasks, return_exceptions=True)
+        return locked_providers, list(raw_results)
 
-        groups: Dict[str, List[Tuple[int, np.ndarray]]] = defaultdict(list)
-        failed_ids: List[int] = []
+    @staticmethod
+    def _score_provider_result(
+        db: Session,
+        provider,
+        result,
+        reference_fp: np.ndarray,
+        reference_model: Optional[str],
+        reference_source: str,
+        prompt: str,
+        seed: int,
+        report: Dict,
+    ) -> None:
 
-        for provider, result in zip(selected, raw_results):
-            if isinstance(result, Exception) or result is None:
-                logger.warning(f"  ❌ {provider.name} — no response")
-                failed_ids.append(provider.id)
-                continue
-
-            wav = result.get("wav")
-            model = result.get("model", "unknown")
-
-            fp = ProviderVerificationService._get_mel_fingerprint(wav)
-            if fp is None:
-                logger.warning(f"  ❌ {provider.name} — invalid audio")
-                failed_ids.append(provider.id)
-                continue
-
-            groups[model].append((provider.id, fp))
-            logger.info(f"  ✅ {provider.name} — model: {model} — fingerprint computed")
-
-        total_responded = sum(len(v) for v in groups.values())
-
-        report = {
-            "status": "completed",
-            "seed": seed,
-            "prompt": prompt,
-            "total": len(selected),
-            "responded": total_responded,
-            "failed": len(failed_ids),
-            "groups": list(groups.keys()),
-            "results": [],
-        }
-
-        for model_name, fps_in_group in groups.items():
-            logger.info(f"  🔬 Model '{model_name}' — {len(fps_in_group)} provider(s)")
-
-            if len(fps_in_group) == 1:
-                provider_id = fps_in_group[0][0]
-                provider = db.query(Provider).filter(Provider.id == provider_id).first()
-                logger.info(
-                    f"  ⏭️  {provider.name if provider else provider_id} — "
-                    f"sole provider on model '{model_name}', skipping comparison"
-                )
-                ProviderVerificationService._reset_failures(db, provider_id)
-                ProviderVerificationService._save_result(
-                    db, provider_id, prompt, seed, None, True
-                )
-                report["results"].append(
-                    {
-                        "provider_id": provider_id,
-                        "provider_name": provider.name if provider else "unknown",
-                        "model": model_name,
-                        "similarity": None,
-                        "passed": True,
-                        "note": "sole_provider_on_model",
-                    }
-                )
-                continue
-
-            reference = np.mean([fp for _, fp in fps_in_group], axis=0)
-
-            for provider_id, fp in fps_in_group:
-                provider = db.query(Provider).filter(Provider.id == provider_id).first()
-                similarity = ProviderVerificationService._cosine_similarity(
-                    fp, reference
-                )
-                passed = similarity >= SIMILARITY_THRESHOLD
-
-                logger.info(
-                    f"  {'✅' if passed else '❌'} {provider.name if provider else provider_id} "
-                    f"— similarity: {similarity:.4f} ({'pass' if passed else 'FAIL'})"
-                )
-
-                ProviderVerificationService._save_result(
-                    db, provider_id, prompt, seed, similarity, passed
-                )
-
-                if passed:
-                    ProviderVerificationService._reset_failures(db, provider_id)
-                else:
-                    should_ban = ProviderVerificationService._flag_provider(
-                        db, provider_id
-                    )
-                    if should_ban:
-                        ProviderVerificationService._ban_provider(
-                            db,
-                            provider_id,
-                            f"Proof-of-work: similarity {similarity:.4f} < {SIMILARITY_THRESHOLD} "
-                            f"for {MAX_CONSECUTIVE_FAILS} consecutive rounds (model: {model_name})",
-                        )
-                        logger.warning(
-                            f"🚫 {provider.name if provider else provider_id} banned "
-                            f"after {MAX_CONSECUTIVE_FAILS} failures"
-                        )
-
-                report["results"].append(
-                    {
-                        "provider_id": provider_id,
-                        "provider_name": provider.name if provider else "unknown",
-                        "model": model_name,
-                        "similarity": similarity,
-                        "passed": passed,
-                    }
-                )
-
-        for pid in failed_ids:
-            provider = db.query(Provider).filter(Provider.id == pid).first()
-            should_ban = ProviderVerificationService._flag_provider(db, pid)
-            ProviderVerificationService._save_result(db, pid, prompt, seed, None, False)
+        if isinstance(result, Exception) or result is None:
+            logger.warning(f"  ❌ {provider.name} — no response")
+            report["failed"] += 1
+            should_ban = ProviderVerificationService._flag_provider(db, provider.id)
+            ProviderVerificationService._save_result(
+                db, provider.id, prompt, seed, None, False
+            )
             if should_ban:
                 ProviderVerificationService._ban_provider(
                     db,
-                    pid,
-                    f"Proof-of-work: {MAX_CONSECUTIVE_FAILS} consecutive non-responses",
+                    provider.id,
+                    f"Proof-of-work: {settings.MAX_CONSECUTIVE_FAILS} consecutive non-responses",
                 )
             report["results"].append(
                 {
-                    "provider_id": pid,
-                    "provider_name": provider.name if provider else "unknown",
+                    "provider_id": provider.id,
+                    "provider_name": provider.name,
                     "model": None,
                     "similarity": None,
                     "passed": False,
+                    "note": "no_response",
                 }
             )
+            return
+
+        wav = result.get("wav")
+        provider_model = result.get("model", "unknown")
+        fp = ProviderVerificationService._get_mel_fingerprint(wav)
+
+        if fp is None:
+            logger.warning(f"  ❌ {provider.name} — invalid audio")
+            report["failed"] += 1
+            should_ban = ProviderVerificationService._flag_provider(db, provider.id)
+            ProviderVerificationService._save_result(
+                db, provider.id, prompt, seed, None, False
+            )
+            if should_ban:
+                ProviderVerificationService._ban_provider(
+                    db,
+                    provider.id,
+                    f"Proof-of-work: {settings.MAX_CONSECUTIVE_FAILS} consecutive invalid audio responses",
+                )
+            report["results"].append(
+                {
+                    "provider_id": provider.id,
+                    "provider_name": provider.name,
+                    "model": provider_model,
+                    "similarity": None,
+                    "passed": False,
+                    "note": "invalid_audio",
+                }
+            )
+            return
+
+        report["responded"] += 1
+
+        if reference_model and provider_model != reference_model:
+            logger.info(
+                f"  ⏭️  {provider.name} — model mismatch "
+                f"(provider: {provider_model} / reference: {reference_model})"
+            )
+            ProviderVerificationService._reset_failures(db, provider.id)
+            ProviderVerificationService._save_result(
+                db, provider.id, prompt, seed, None, True
+            )
+            report["results"].append(
+                {
+                    "provider_id": provider.id,
+                    "provider_name": provider.name,
+                    "model": provider_model,
+                    "similarity": None,
+                    "passed": True,
+                    "note": "model_mismatch_skipped",
+                }
+            )
+            return
+
+        similarity = ProviderVerificationService._cosine_similarity(fp, reference_fp)
+        passed = similarity >= settings.SIMILARITY_THRESHOLD
+
+        logger.info(
+            f"  {'✅' if passed else '❌'} {provider.name} "
+            f"— similarity: {similarity:.4f} ({'pass' if passed else 'FAIL'}) "
+            f"| model: {provider_model} | ref: {reference_source}"
+        )
+
+        ProviderVerificationService._save_result(
+            db, provider.id, prompt, seed, similarity, passed
+        )
+
+        if passed:
+            ProviderVerificationService._reset_failures(db, provider.id)
+        else:
+            should_ban = ProviderVerificationService._flag_provider(db, provider.id)
+            if should_ban:
+                ProviderVerificationService._ban_provider(
+                    db,
+                    provider.id,
+                    f"Proof-of-work: similarity {similarity:.4f} < {settings.SIMILARITY_THRESHOLD} "
+                    f"for {settings.MAX_CONSECUTIVE_FAILS} consecutive rounds "
+                    f"(model: {provider_model}, ref: {reference_source})",
+                )
+                logger.warning(
+                    f"🚫 {provider.name} banned after {settings.MAX_CONSECUTIVE_FAILS} failures"
+                )
+
+        report["results"].append(
+            {
+                "provider_id": provider.id,
+                "provider_name": provider.name,
+                "model": provider_model,
+                "similarity": similarity,
+                "passed": passed,
+                "note": None,
+            }
+        )
+
+    @staticmethod
+    async def run_verification_round(db: Session) -> Dict:
+        from server.core.database import Provider
+
+        all_providers = (
+            db.query(Provider)
+            .filter(
+                Provider.is_active == True,
+                Provider.is_banned == False,
+                Provider.is_trusted == False,
+            )
+            .all()
+        )
+
+        if not all_providers:
+            logger.info("⚡ No non-trusted providers to verify")
+            return {"status": "skipped", "reason": "no_providers"}
+
+        sample_size = max(1, int(len(all_providers) * settings.VERIFY_POOL_PCT))
+        selected = random.sample(all_providers, min(sample_size, len(all_providers)))
+
+        prompt = random.choice(settings.VERIFICATION_PROMPTS)
+        seed = random.randint(0, 2**31 - 1)
+
+        logger.info(
+            f"🔍 Verification round — {len(selected)}/{len(all_providers)} providers "
+            f"| prompt: '{prompt}' | seed: {seed}"
+        )
+
+        report = ProviderVerificationService._make_report(prompt, seed)
+        report["total"] = len(selected)
+
+        trusted = ProviderVerificationService._get_trusted_provider(db)
+        reference_fp, reference_model, reference_source = (
+            await ProviderVerificationService._build_reference(db, trusted, report)
+        )
+
+        if reference_fp is None:
+            logger.warning("⏸️  No reference available — round BYPASSED")
+            return {
+                "status": "bypassed",
+                "reason": "no_reference_available",
+                "prompt": prompt,
+                "seed": seed,
+            }
+
+        report["reference_source"] = reference_source
+        report["reference_model"] = reference_model
+
+        locked_providers, raw_results = (
+            await ProviderVerificationService._request_verifications_from_providers(
+                db, selected, prompt, seed, report
+            )
+        )
+
+        if not locked_providers:
+            logger.info("⚡ No providers ready for verification this round")
+            report["status"] = "skipped"
+            report["reason"] = "all_providers_busy"
+            return report
+
+        try:
+            for provider, result in zip(locked_providers, raw_results):
+                ProviderVerificationService._score_provider_result(
+                    db,
+                    provider,
+                    result,
+                    reference_fp,
+                    reference_model,
+                    reference_source,
+                    prompt,
+                    seed,
+                    report,
+                )
+        finally:
+            for p in locked_providers:
+                ProviderVerificationService._unlock_provider_after_test(db, p.id)
 
         passed_count = sum(1 for r in report["results"] if r["passed"])
         logger.info(
             f"✅ Verification round complete — "
             f"{passed_count}/{len(report['results'])} passed "
-            f"| {len(groups)} model group(s)"
+            f"| reference: {reference_source} (model: {reference_model})"
         )
 
         return report
+
+    @staticmethod
+    async def _wait_for_provider_free(
+        db: Session,
+        provider_id: int,
+        provider_name: str,
+        timeout: int = settings.WAIT_FOR_FREE_TIMEOUT,
+        poll_interval: int = settings.WAIT_FOR_FREE_POLL_INTERVAL,
+    ) -> bool:
+        from server.core.database import Provider, SessionLocal
+
+        deadline = asyncio.get_event_loop().time() + timeout
+        while asyncio.get_event_loop().time() < deadline:
+            with SessionLocal() as check_db:
+                p = check_db.query(Provider).filter(Provider.id == provider_id).first()
+                if p and not p.is_generating:
+                    return True
+            await asyncio.sleep(poll_interval)
+
+        logger.warning(
+            f"⏱️  {provider_name} still generating after {timeout}s — skipping for this round"
+        )
+        return False
+
+    @staticmethod
+    async def _lock_provider_for_test(db: Session, provider_id: int) -> bool:
+        from server.core.database import Provider
+
+        p = db.query(Provider).filter(Provider.id == provider_id).first()
+        if not p or p.is_generating or not p.is_disposable:
+            return False
+        p.is_disposable = False
+        db.commit()
+        return True
+
+    @staticmethod
+    def _unlock_provider_after_test(db: Session, provider_id: int):
+        from server.core.database import Provider
+
+        try:
+            p = db.query(Provider).filter(Provider.id == provider_id).first()
+            if p:
+                p.is_disposable = True
+                db.commit()
+        except Exception as e:
+            logger.error(f"Failed to unlock provider {provider_id}: {e}")
 
     @staticmethod
     async def run_forever():
         from server.core.database import SessionLocal
 
         while True:
-            delay = random.randint(VERIFY_INTERVAL_MIN, VERIFY_INTERVAL_MAX)
+            delay = random.randint(
+                settings.VERIFY_INTERVAL_MIN, settings.VERIFY_INTERVAL_MAX
+            )
             hours = delay // 3600
             mins = (delay % 3600) // 60
             logger.info(f"⏳ Next verification round in {hours}h{mins:02d}m")

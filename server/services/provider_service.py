@@ -85,7 +85,11 @@ class ProviderService:
 
         providers = (
             db.query(Provider)
-            .filter(Provider.is_active == True, Provider.is_banned == False)
+            .filter(
+                Provider.is_active == True,
+                Provider.is_banned == False,
+                Provider.is_disposable == True,
+            )
             .all()
         )
         random.shuffle(providers)
@@ -225,6 +229,10 @@ class ProviderService:
         provider: Dict, prompt: str, duration: int, db: Session
     ) -> Optional[bytes]:
         try:
+            p = db.query(Provider).filter(Provider.id == provider["id"]).first()
+            if p:
+                p.is_generating = True
+                db.commit()
             print(f"🎵 Sending generation to provider: {provider['name']}")
             async with httpx.AsyncClient(timeout=GENERATE_TIMEOUT) as client:
                 response = await client.post(
@@ -494,6 +502,17 @@ class ProviderService:
                         if not future.done():
                             future.set_exception(e)
                     finally:
+                        try:
+                            p = (
+                                db.query(Provider)
+                                .filter(Provider.id == provider_id)
+                                .first()
+                            )
+                            if p:
+                                p.is_generating = False
+                                db.commit()
+                        except Exception:
+                            pass
                         db.close()
                         queue.task_done()
 
