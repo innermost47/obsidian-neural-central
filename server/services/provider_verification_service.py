@@ -17,12 +17,10 @@ logger = logging.getLogger(__name__)
 class ProviderVerificationService:
 
     @staticmethod
-    def _get_mel_fingerprint(wav_bytes: bytes) -> Optional[np.ndarray]:
+    def _get_mel_fingerprint(wav_bytes: bytes, duration: int) -> Optional[np.ndarray]:
         try:
             buf = io.BytesIO(wav_bytes)
-            y, sr = librosa.load(
-                buf, sr=22050, mono=True, duration=settings.VERIFY_DURATION
-            )
+            y, sr = librosa.load(buf, sr=22050, mono=True, duration=duration)
             mel = librosa.feature.melspectrogram(y=y, sr=sr, n_mels=128, fmax=8000)
             mel_db = librosa.power_to_db(mel, ref=np.max)
             return mel_db.mean(axis=1).astype(np.float32)
@@ -72,6 +70,7 @@ class ProviderVerificationService:
         seed: int,
         model: str,
         fingerprint: np.ndarray,
+        duration: int,
     ) -> bool:
         from server.core.database import VerificationSample
         from server.core.security import encrypt_fingerprint
@@ -92,6 +91,7 @@ class ProviderVerificationService:
             prompt=prompt,
             seed=seed,
             model=model,
+            duration=duration,
             encrypted_fingerprint=encrypt_fingerprint(fingerprint),
         )
         db.add(sample)
@@ -318,18 +318,23 @@ class ProviderVerificationService:
         for _ in range(needed):
             s_seed = random.randint(0, 2**31 - 1)
             s_prompt = random.choice(settings.VERIFICATION_PROMPTS)
+            s_duration = random.randint(
+                settings.VERIFY_DURATION_MIN, settings.VERIFY_DURATION_MAX
+            )
             result = await ProviderVerificationService._request_verification(
-                trusted.url, decrypted_key, s_prompt, s_seed, settings.VERIFY_DURATION
+                trusted.url, decrypted_key, s_prompt, s_seed, s_duration
             )
             if not result or not result.get("wav"):
                 logger.warning(f"  ⚠️  Trusted failed to generate sample '{s_prompt}'")
                 continue
-            fp = ProviderVerificationService._get_mel_fingerprint(result["wav"])
+            fp = ProviderVerificationService._get_mel_fingerprint(
+                result["wav"], s_duration
+            )
             if fp is None:
                 logger.warning(f"  ⚠️  Bad fingerprint for sample '{s_prompt}'")
                 continue
             ok = ProviderVerificationService._store_sample(
-                db, s_prompt, s_seed, model, fp
+                db, s_prompt, s_seed, model, fp, s_duration
             )
             if ok:
                 logger.info(f"  ✅ Sample stored — prompt: '{s_prompt}' seed: {s_seed}")
@@ -348,7 +353,7 @@ class ProviderVerificationService:
         samples = query.all()
 
         if not samples:
-            return None, None, "none"
+            return None, None, "none", settings.VERIFY_DURATION
 
         chosen = random.choice(samples)
         source = "sample_bank_random" if model_filter else "sample_bank_random_fallback"
@@ -359,17 +364,17 @@ class ProviderVerificationService:
                 f"seed: {chosen.seed} model: {chosen.model} "
                 f"(pool: {len(samples)} samples)"
             )
-            return fp, chosen.model, source
+            return fp, chosen.model, source, chosen.duration
         except Exception as e:
             logger.error(f"Failed to decrypt chosen sample: {e}")
-            return None, None, "none"
+            return None, None, "none", settings.VERIFY_DURATION
 
     @staticmethod
     async def _build_reference(
         db: Session,
         trusted,
         report: Dict,
-    ) -> Tuple[Optional[np.ndarray], Optional[str], str]:
+    ) -> Tuple[Optional[np.ndarray], Optional[str], str, int]:
         from server.core.security import decrypt_server_key
 
         if not trusted:
@@ -396,17 +401,17 @@ class ProviderVerificationService:
             await ProviderVerificationService._fill_sample_bank_from_trusted(
                 db, trusted, decrypted_key, model
             )
-            fp, ref_model, source = (
+            fp, ref_model, source, ref_duration = (
                 ProviderVerificationService._draw_reference_from_bank(
                     db, model_filter=model
                 )
             )
             if fp is None:
                 logger.warning("⚠️  Sample bank still empty after fill attempt")
-            return fp, ref_model, source
+            return fp, ref_model, source, ref_duration
         except Exception as e:
             logger.error(f"Failed during trusted reference phase: {e}")
-            return None, None, "none"
+            return None, None, "none", settings.VERIFY_DURATION
         finally:
             ProviderVerificationService._unlock_provider_after_test(db, trusted.id)
 
@@ -416,6 +421,7 @@ class ProviderVerificationService:
         providers: list,
         prompt: str,
         seed: int,
+        duration: int,
         report: Dict,
     ) -> Tuple[list, list]:
 
@@ -434,7 +440,7 @@ class ProviderVerificationService:
                 decrypted_key = decrypt_server_key(p.encoded_server_auth_key)
                 tasks.append(
                     ProviderVerificationService._request_verification(
-                        p.url, decrypted_key, prompt, seed, settings.VERIFY_DURATION
+                        p.url, decrypted_key, prompt, seed, duration
                     )
                 )
             except Exception as e:
@@ -453,6 +459,7 @@ class ProviderVerificationService:
         reference_model: Optional[str],
         reference_source: str,
         prompt: str,
+        reference_duration: int,
         seed: int,
         report: Dict,
     ) -> None:
@@ -484,7 +491,7 @@ class ProviderVerificationService:
 
         wav = result.get("wav")
         provider_model = result.get("model", "unknown")
-        fp = ProviderVerificationService._get_mel_fingerprint(wav)
+        fp = ProviderVerificationService._get_mel_fingerprint(wav, reference_duration)
 
         if fp is None:
             logger.warning(f"  ❌ {provider.name} — invalid audio")
@@ -595,7 +602,7 @@ class ProviderVerificationService:
         sample_size = max(1, int(len(all_providers) * settings.VERIFY_POOL_PCT))
         selected = random.sample(all_providers, min(sample_size, len(all_providers)))
 
-        prompt = random.choice(settings.VERIFICATION_PROMPTS)
+        prompt = settings.build_verification_prompt()
         seed = random.randint(0, 2**31 - 1)
 
         logger.info(
@@ -607,7 +614,7 @@ class ProviderVerificationService:
         report["total"] = len(selected)
 
         trusted = ProviderVerificationService._get_trusted_provider(db)
-        reference_fp, reference_model, reference_source = (
+        reference_fp, reference_model, reference_source, reference_duration = (
             await ProviderVerificationService._build_reference(db, trusted, report)
         )
 
@@ -625,7 +632,7 @@ class ProviderVerificationService:
 
         locked_providers, raw_results = (
             await ProviderVerificationService._request_verifications_from_providers(
-                db, selected, prompt, seed, report
+                db, selected, prompt, seed, reference_duration, report
             )
         )
 
@@ -645,6 +652,7 @@ class ProviderVerificationService:
                     reference_model,
                     reference_source,
                     prompt,
+                    reference_duration,
                     seed,
                     report,
                 )

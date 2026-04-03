@@ -325,6 +325,7 @@ class VerificationSample(Base):
     seed = Column(BigInteger, nullable=False)
     model = Column(String(255), nullable=False)
     encrypted_fingerprint = Column(Text, nullable=False)
+    duration = Column(Integer, nullable=False, default=5)
     created_at = Column(
         DateTime(timezone=True),
         default=lambda: datetime.now(timezone.utc),
