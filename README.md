@@ -157,112 +157,13 @@ The redistribution report is saved to the `finance_reports` table at each execut
 
 ---
 
-### Public API
+### Public Data Dashboard
 
-All endpoints below are public and require no authentication.
+All network data — active subscribers, monthly redistribution history, and proof-of-generation logs — is published live at:
 
-#### `GET /api/v1/public/stats`
+**[obsidian-neural.com/public.html](https://obsidian-neural.com/public.html)**
 
-Returns the number of active paying subscribers in real time.
-
-```json
-{
-  "paying_users": 42,
-  "updated_at": "2026-03-28T14:32:00Z"
-}
-```
-
-Allows every provider to verify the platform's growth and estimate their monthly share.
-
----
-
-#### `GET /api/v1/public/finances`
-
-Returns the full redistribution history, paginated. Stored permanently — no data is ever deleted.
-
-**Query params:**
-
-| Param   | Default | Description                     |
-| ------- | ------- | ------------------------------- |
-| `page`  | `1`     | Page number                     |
-| `limit` | `24`    | Results per page (max 100)      |
-| `month` | —       | Optional filter, e.g. `2026-03` |
-
-**Example response:**
-
-```json
-{
-  "total": 3,
-  "page": 1,
-  "limit": 24,
-  "reports": [
-    {
-      "month": "2026-03",
-      "total_revenue_eur": 180.0,
-      "platform_fee_pct": 15.0,
-      "platform_fee_eur": 27.0,
-      "distributable_eur": 153.0,
-      "eligible_providers": 6,
-      "share_per_provider_eur": 25.5,
-      "remainder_eur": 0.0,
-      "transfers": [
-        {
-          "provider_name": "Paul GPU",
-          "amount_eur": 25.5,
-          "uptime_score_pct": 87.5,
-          "billable_jobs": 42,
-          "status": "sent"
-        }
-      ],
-      "published_at": "2026-04-01T06:00:00Z"
-    }
-  ]
-}
-```
-
----
-
-#### `GET /api/v1/public/ownership`
-
-Returns the generation ownership log, paginated.
-
-**Query params:**
-
-| Param            | Default | Description                  |
-| ---------------- | ------- | ---------------------------- |
-| `page`           | `1`     | Page number                  |
-| `limit`          | `50`    | Results per page (max 200)   |
-| `public_user_id` | —       | Optional filter by user UUID |
-
-**Example response:**
-
-```json
-{
-  "total": 4284,
-  "page": 1,
-  "limit": 50,
-  "results": [
-    {
-      "public_user_id": "a1b2c3d4-...",
-      "provider": "Paul GPU",
-      "prompt_hash": "3f7a1c2e",
-      "duration": 5.0,
-      "generated_at": "2026-03-28T14:32:00Z",
-      "audio_content_hash": "e3b0c44298fc1c14..."
-    }
-  ]
-}
-```
-
----
-
-### Public Data Summary
-
-| Endpoint                       | Data                                       |
-| ------------------------------ | ------------------------------------------ |
-| `GET /api/v1/public/stats`     | Active subscribers count in real time      |
-| `GET /api/v1/public/finances`  | Monthly redistribution history (paginated) |
-| `GET /api/v1/public/ownership` | Proof of generation ownership (paginated)  |
+No authentication required. No data is ever deleted.
 
 ---
 
