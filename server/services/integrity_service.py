@@ -33,13 +33,14 @@ def verify_provider_hash(
 ) -> bool:
     content = get_github_file_content()
     if not content:
-        logger.warning("⚠️  GitHub reference not loaded yet — skipping integrity check")
+        print("⚠️  GitHub reference not loaded — skipping")
         return True
     expected = compute_expected_provider_hash(
         content, provider_api_key_hash, encoded_server_auth_key
     )
-    print(x_provider_hash)
-    print(expected)
+    print(f"[INTEGRITY] received : {x_provider_hash}")
+    print(f"[INTEGRITY] expected : {expected}")
+    print(f"[INTEGRITY] match    : {x_provider_hash == expected}")
     return x_provider_hash == expected
 
 
