@@ -87,13 +87,16 @@ async def list_providers(
                 "jobs_done_this_month": jobs_by_provider.get(p.id, 0),
                 "jobs_failed": p.jobs_failed,
                 "billable_jobs": p.billable_jobs,
-                "uptime": ProviderService.calculate_uptime(
-                    db,
-                    p,
-                    now,
-                    month_start,
-                    preloaded_stats=stats_by_provider.get(p.id, []),
-                ),
+                "uptime": {
+                    **ProviderService.calculate_uptime(
+                        db,
+                        p,
+                        now,
+                        month_start,
+                        preloaded_stats=stats_by_provider.get(p.id, []),
+                    ),
+                    **ProviderService.calculate_uptime_goal(p, now),
+                },
                 "user_email": p.user.email if p.user else None,
                 "last_ping": p.last_ping.isoformat() if p.last_ping else None,
                 "last_seen": p.last_seen.isoformat() if p.last_seen else None,
