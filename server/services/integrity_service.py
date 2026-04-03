@@ -38,6 +38,8 @@ def verify_provider_hash(
     expected = compute_expected_provider_hash(
         content, provider_api_key_hash, encoded_server_auth_key
     )
+    print(x_provider_hash)
+    print(expected)
     return x_provider_hash == expected
 
 
