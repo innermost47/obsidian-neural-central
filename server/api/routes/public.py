@@ -5,7 +5,6 @@ from datetime import datetime, timezone
 from server.core.database import get_db, OwnershipLog, FinanceReport
 from sqlalchemy import desc
 
-
 router = APIRouter(tags=["Generation", "Public"], prefix="/public")
 
 
@@ -23,10 +22,36 @@ async def public_stats(db: Session = Depends(get_db)):
         )
         .count()
     )
-
     return {
         "paying_users": paying_users,
         "updated_at": datetime.now(timezone.utc).isoformat(),
+    }
+
+
+@router.get("/network")
+def get_network_status(db: Session = Depends(get_db)):
+    from server.core.database import Provider
+
+    providers = (
+        db.query(Provider)
+        .filter(Provider.is_active == True, Provider.is_banned == False)
+        .order_by(desc(Provider.jobs_done))
+        .all()
+    )
+
+    return {
+        "total": len(providers),
+        "updated_at": datetime.now(timezone.utc).isoformat(),
+        "providers": [
+            {
+                "name": p.name,
+                "is_online": p.is_online,
+                "is_trusted": p.is_trusted,
+                "jobs_done": p.jobs_done,
+                "last_seen": p.last_seen.isoformat() if p.last_seen else None,
+            }
+            for p in providers
+        ],
     }
 
 
@@ -38,10 +63,8 @@ def get_ownership_logs(
     public_user_id: Optional[str] = Query(default=None),
 ):
     query = db.query(OwnershipLog)
-
     if public_user_id:
         query = query.filter(OwnershipLog.public_user_id == public_user_id)
-
     total = query.count()
     logs = (
         query.order_by(desc(OwnershipLog.generated_at))
@@ -49,7 +72,6 @@ def get_ownership_logs(
         .limit(limit)
         .all()
     )
-
     return {
         "total": total,
         "page": page,
@@ -78,13 +100,10 @@ def get_finance_reports(
     ),
 ):
     query = db.query(FinanceReport).order_by(desc(FinanceReport.month))
-
     if month:
         query = query.filter(FinanceReport.month == month)
-
     total = query.count()
     reports = query.offset((page - 1) * limit).limit(limit).all()
-
     return {
         "total": total,
         "page": page,
