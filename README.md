@@ -38,21 +38,25 @@ FastAPI central server
 
 ### Environment Variables (central server)
 
-| Variable                   | Default | Description                                      |
-| -------------------------- | ------- | ------------------------------------------------ |
-| `PLATFORM_FEE_PCT`         | `0.15`  | Platform fee (15%) — covers fal.ai + hosting     |
-| `PING_PROBABILITY`         | `0.60`  | Probability of ping each hour                    |
-| `MIN_UPTIME_SCORE`         | `0.80`  | Minimum uptime to be eligible                    |
-| `MIN_BILLABLE_JOBS`        | `1`     | Minimum real jobs in the month                   |
-| `RANDOM_DELAY_MAX_MINUTES` | `50`    | Max random delay before ping execution           |
-| `PING_TIMEOUT`             | `5.0`   | Ping timeout in seconds                          |
-| `VERIFY_TIMEOUT`           | `120.0` | Verification request timeout in seconds          |
-| `VERIFY_POOL_PCT`          | `0.30`  | Fraction of active providers verified per round  |
-| `SIMILARITY_THRESHOLD`     | `0.98`  | Minimum cosine similarity to pass verification   |
-| `MAX_CONSECUTIVE_FAILS`    | `3`     | Consecutive failures before automatic ban        |
-| `VERIFY_DURATION`          | `5`     | Audio duration used for fingerprinting (seconds) |
-| `VERIFY_INTERVAL_MIN`      | `3600`  | Min delay between verification rounds (seconds)  |
-| `VERIFY_INTERVAL_MAX`      | `18000` | Max delay between verification rounds (seconds)  |
+| Variable                      | Default | Description                                           |
+| ----------------------------- | ------- | ----------------------------------------------------- |
+| `PLATFORM_FEE_PCT`            | `0.15`  | Platform fee (15%) — covers fal.ai + hosting          |
+| `PING_PROBABILITY`            | `0.60`  | Probability of ping each hour                         |
+| `MIN_UPTIME_SCORE`            | `0.80`  | Minimum uptime to be eligible                         |
+| `MIN_BILLABLE_JOBS`           | `1`     | Minimum real jobs in the month                        |
+| `RANDOM_DELAY_MAX_MINUTES`    | `50`    | Max random delay before ping execution                |
+| `PING_TIMEOUT`                | `5.0`   | Ping timeout in seconds                               |
+| `VERIFY_TIMEOUT`              | `120.0` | Verification request timeout in seconds               |
+| `VERIFY_POOL_PCT`             | `0.30`  | Fraction of active providers verified per round       |
+| `SIMILARITY_THRESHOLD`        | `0.98`  | Minimum cosine similarity to pass verification        |
+| `MAX_CONSECUTIVE_FAILS`       | `3`     | Consecutive failures before automatic ban             |
+| `VERIFY_DURATION`             | `5`     | Audio duration used for fingerprinting (seconds)      |
+| `VERIFY_INTERVAL_MIN`         | `3600`  | Min delay between verification rounds (seconds)       |
+| `VERIFY_INTERVAL_MAX`         | `18000` | Max delay between verification rounds (seconds)       |
+| `TRUSTED_SAMPLE_TARGET`       | `5`     | Number of reference samples to maintain in the bank   |
+| `WAIT_FOR_FREE_TIMEOUT`       | `600`   | Max wait for a provider to finish a job before skip   |
+| `WAIT_FOR_FREE_POLL_INTERVAL` | `15`    | Polling interval when waiting for a free provider (s) |
+| `SAMPLE_ENCRYPTION_KEY`       | —       | Fernet key for encrypting fingerprints in the DB      |
 
 ---
 
@@ -74,27 +78,64 @@ In parallel, the provider sends an automatic **heartbeat** to the central server
 
 To ensure providers are running a genuine, unmodified model and not relaying requests or faking responses, the central server runs periodic **proof-of-work verification rounds**.
 
-#### How it works
+#### Trusted provider (reference node)
 
-1. A random subset of active providers is selected (default: 30% of the pool, minimum 2)
-2. A random **prompt** and **seed** are chosen from a fixed bank of 64 reference prompts
+One provider can be flagged `is_trusted = true` in the database (typically the operator's own machine). This node acts as the **absolute reference** for all verification rounds — its output is never compared against other providers, it is the ground truth.
+
+- The trusted provider must be online (`is_online = true`) and not banned
+- Before each round, the server checks whether the trusted node is free (`is_generating = false`, `is_disposable = true`) and locks it temporarily
+- While locked, the server fills the **reference sample bank** up to `TRUSTED_SAMPLE_TARGET` samples by generating audio with different random prompts and seeds
+- Each fingerprint is **encrypted with `SAMPLE_ENCRYPTION_KEY`** (Fernet) before being stored in `verification_samples` — a DB leak does not expose usable fingerprints
+- The trusted node is **unlocked immediately** after the bank fill, before the actual test round fires, so it remains available for production jobs
+- A random sample is then drawn from the bank as the reference for the current round
+
+#### Fallback hierarchy
+
+| Situation                         | Reference source                          |
+| --------------------------------- | ----------------------------------------- |
+| Trusted online and free           | Fill bank → draw random sample from bank  |
+| Trusted online but busy           | Draw random sample from existing bank     |
+| No trusted online, bank non-empty | Draw random sample from existing bank     |
+| No trusted online, bank empty     | Round bypassed — no ban, wait for trusted |
+
+#### Provider availability flags
+
+Two flags on the `Provider` model control scheduling:
+
+| Flag            | Meaning                                                                     |
+| --------------- | --------------------------------------------------------------------------- |
+| `is_generating` | Provider is currently processing a production job                           |
+| `is_disposable` | Provider is available to be selected for a test (`false` = locked for test) |
+
+Before any verification request is sent, the server:
+
+1. Waits in parallel (up to `WAIT_FOR_FREE_TIMEOUT`) for all selected providers to finish their current job (`is_generating = false`)
+2. Locks each free provider atomically (`is_disposable = false`) to prevent a production job from sneaking in
+3. Fires all verification requests in parallel via `asyncio.gather`
+4. Unlocks all providers in a `finally` block regardless of outcome
+
+Production job dispatch (`_find_available_provider`) filters on `is_disposable = true`, so a provider under test is invisible to the job queue.
+
+#### How verification works
+
+1. A random subset of active, non-trusted providers is selected (default: 30% of the pool)
+2. A reference fingerprint is drawn randomly from the sample bank (see above)
 3. Each selected provider receives `POST /verify` with `{ prompt, seed, duration }`
 4. The server computes a **mel spectrogram fingerprint** (128 mel bands, averaged over time) for each returned WAV
-5. Providers are **grouped by model name** (returned in the `X-Model` response header)
-6. Within each group, fingerprints are compared to the group mean via **cosine similarity**
-7. A provider passes if `similarity ≥ 0.98` (configurable via `SIMILARITY_THRESHOLD`)
+5. Each fingerprint is compared to the reference via **cosine similarity**
+6. A provider running a **different model** than the reference is automatically skipped (no penalty — cross-model comparison is meaningless)
 
 #### Scoring and banning
 
-- A **pass** resets the provider's consecutive failure counter
+- A **pass** (`similarity ≥ SIMILARITY_THRESHOLD`) resets the provider's consecutive failure counter
 - A **fail** increments `verification_failures`
-- After **3 consecutive failures** (configurable via `MAX_CONSECUTIVE_FAILS`), the provider is **automatically banned**
-- A provider that fails to respond at all counts as a failed verification
-- If a provider is the **sole node on its model**, it is skipped for comparison and auto-passes (cannot be compared against a group of one)
+- After **`MAX_CONSECUTIVE_FAILS` consecutive failures**, the provider is **automatically banned**
+- A provider that fails to respond counts as a failed verification
+- A provider busy beyond `WAIT_FOR_FREE_TIMEOUT` is **skipped for this round** with no penalty
 
 #### Timing
 
-Rounds run on a **random interval between 1h and 5h** (configurable via `VERIFY_INTERVAL_MIN` / `VERIFY_INTERVAL_MAX`), launched as a background loop at server startup. The randomness prevents providers from predicting when the next check will occur.
+Rounds run on a **random interval between 1h and 5h** (configurable via `VERIFY_INTERVAL_MIN` / `VERIFY_INTERVAL_MAX`). The randomness prevents providers from predicting when the next check will occur.
 
 #### Results
 
@@ -105,9 +146,16 @@ provider_verifications
 ├── provider_id
 ├── prompt
 ├── seed
-├── similarity_score   (null if no response)
+├── similarity_score   (null if no response or model mismatch)
 ├── passed
 └── verified_at
+
+verification_samples   (reference fingerprint bank)
+├── prompt
+├── seed
+├── model
+├── encrypted_fingerprint   (Fernet-encrypted numpy float32 array)
+└── created_at
 ```
 
 ---
@@ -149,7 +197,8 @@ The redistribution report is saved to the `finance_reports` table at each execut
 
 - **FFmpeg validation**: every WAV received from a provider is validated (format, duration 1-60s, max size 50MB) before being sent to the client
 - **Immediate ban** if invalid WAV is returned
-- **Proof-of-work verification**: periodic mel fingerprint comparison ensures providers run a genuine model
+- **Proof-of-work verification**: periodic mel fingerprint comparison against an encrypted reference bank ensures providers run a genuine model
+- **Encrypted fingerprint bank**: reference fingerprints stored with a dedicated Fernet key (`SAMPLE_ENCRYPTION_KEY`) — independent of other keys, a leak of one does not compromise the others
 - **Per-provider API key**: auto-generated (`op_` + 48 random characters)
 - **Text LLM → fal.ai only**: never processed at providers to prevent prompt injection
 - **Public ownership records**: use `public_user_id` (UUID, never the internal ID), stored in DB
