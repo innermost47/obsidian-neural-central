@@ -4,10 +4,13 @@ import hashlib
 import random
 from datetime import datetime, timezone, timedelta
 from typing import List, Dict, Optional
+from pydantic import ValidationError
 from sqlalchemy.orm import Session
 from server.config import settings
 from server.core.security import decrypt_server_key
 from server.services.integrity_service import verify_provider_hash
+from server.api.models import ProviderStatusResponse
+from server.services.provider_service import ProviderService
 
 
 class ProviderPingService:
@@ -61,34 +64,46 @@ class ProviderPingService:
             try:
                 async with httpx.AsyncClient(timeout=settings.PING_TIMEOUT) as client:
                     t0 = asyncio.get_event_loop().time()
-                    response = await client.get(
-                        f"{provider.url.rstrip('/')}/status",
+                    response = await client.post(
+                        f"{provider.url.rstrip('/')}/process",
                         headers={
                             **settings.BROWSER_HEADERS,
                             "X-API-Key": decrypt_server_key(
                                 provider.encoded_server_auth_key
                             ),
                         },
+                        json={"action": "status"},
                     )
                     if response.status_code == 200:
-                        data = response.json()
-                        returned_key = data.get("api_key", "")
-                        key_hash = hashlib.sha256(returned_key.encode()).hexdigest()
-                        if key_hash == provider.api_key:
-                            responded = True
-                        else:
-                            provider_hash = response.headers.get("x-provider-hash", "")
-                            if not verify_provider_hash(
-                                provider_hash,
-                                provider.api_key,
-                                provider.encoded_server_auth_key,
-                            ):
-                                print(
-                                    f"⚠️ {provider.name} — code integrity check failed on ping"
-                                )
-                                responded = False
-                            else:
+                        try:
+                            data = response.json()
+                            status_response = ProviderStatusResponse(**data)
+
+                            returned_key = status_response.api_key
+                            key_hash = hashlib.sha256(returned_key.encode()).hexdigest()
+                            if key_hash == provider.api_key:
                                 responded = True
+                            else:
+                                provider_hash = response.headers.get(
+                                    "x-provider-hash", ""
+                                )
+                                if not verify_provider_hash(
+                                    provider_hash,
+                                    provider.api_key,
+                                    provider.encoded_server_auth_key,
+                                ):
+                                    print(
+                                        f"⚠️ {provider.name} — code integrity check failed on ping"
+                                    )
+                                    responded = False
+                                else:
+                                    responded = True
+                        except ValidationError as e:
+                            print(f"🚫 {provider.name} — invalid response format: {e}")
+                            ProviderService._ban_provider(
+                                db, provider.id, f"Invalid status response format: {e}"
+                            )
+                            responded = False
                     else:
                         responded = False
                     t1 = asyncio.get_event_loop().time()

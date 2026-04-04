@@ -323,3 +323,33 @@ class AdminNotificationService:
         return _send(
             f"📰 Press activation — {journalist_email}", content, "admin_notification"
         )
+
+    @staticmethod
+    def notify_provider_banned(
+        provider_name: str, provider_id: int, reason: str
+    ) -> bool:
+        content = f"""
+        {section_title("Provider banned")}
+        <h1 style="color:#1a1a1a;font-size:22px;font-weight:700;margin:0 0 16px;">
+          🚫 Provider banned from network
+        </h1>
+        {info_box(f'''
+          <table cellpadding="0" cellspacing="0" border="0" width="100%">
+            {stat_row("Provider", provider_name)}
+            {stat_row("Provider ID", str(provider_id))}
+            {stat_row("Reason", reason)}
+            {stat_row("Status", '<span style="color:#b8605c;font-weight:700;">BANNED</span>')}
+            {stat_row("Time", _now())}
+          </table>
+        ''')}
+        <p style="color:#4a4a4a;font-size:13px;line-height:1.6;margin:16px 0;">
+          This provider has been automatically removed from the network due to integrity violations.
+          Check logs for details.
+        </p>
+        {_admin_link()}
+        """
+        return _send(
+            f"🚫 Provider banned — {provider_name} (ID: {provider_id})",
+            content,
+            "admin_provider_banned",
+        )

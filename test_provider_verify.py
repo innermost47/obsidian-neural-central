@@ -9,11 +9,17 @@ import hashlib
 import httpx
 import librosa
 import numpy as np
+from pydantic import ValidationError
 from scipy.spatial.distance import cosine
 from server.config import settings
 from sqlalchemy.orm import Session
 from server.core.database import SessionLocal, Provider
 from server.core.security import decrypt_server_key
+from server.api.models import (
+    ProviderStatusResponse,
+    ProviderHealthResponse,
+    ProviderGenerateResponse,
+)
 
 DEFAULT_RUNS = 3
 DEFAULT_DURATION = 5
@@ -120,15 +126,25 @@ def save_wav(wav_bytes: bytes, path: str):
 async def test_health(client: httpx.AsyncClient, url: str, headers: dict) -> bool:
     title("① Health check")
     try:
-        r = await client.get(
-            f"{url}/health",
+        r = await client.post(
+            f"{url}/process",
             timeout=5.0,
             headers=headers,
+            json={"action": "health"},
         )
         if r.status_code == 200:
-            data = r.json()
-            ok(f"Server is up — model loaded: {data.get('model_loaded')}")
-            return True
+            try:
+                data = r.json()
+
+                health_response = ProviderHealthResponse(**data)
+
+                ok(f"Server is up — model loaded: {health_response.model_loaded}")
+                ok(f"Model: {health_response.model}")
+                ok(f"Model ID: {health_response.model_id}")
+                return True
+            except ValidationError as e:
+                fail(f"Invalid response format: {e}")
+                return False
         else:
             fail(f"HTTP {r.status_code}")
             return False
@@ -142,25 +158,29 @@ async def test_status(
 ) -> dict | None:
     title("② Status check")
     try:
-        r = await client.get(
-            f"{url}/status",
+        r = await client.post(
+            f"{url}/process",
             timeout=5.0,
             headers=headers,
+            json={"action": "status"},
         )
         if r.status_code == 200:
-            data = r.json()
-            ok(f"Available: {data.get('available')}")
-            info(f"Model   : {data.get('model_id', data.get('model', '—'))}")
-            info(f"Device  : {data.get('device', '—')}")
-            if data.get("vram_total_gb"):
+            try:
+                data = r.json()
+                status_response = ProviderStatusResponse(**data)
+
+                ok(f"Available: {status_response.available}")
+                info(f"Model   : {status_response.model_id}")
+                info(f"Device  : {status_response.device}")
                 info(
-                    f"VRAM    : {data.get('vram_used_gb', 0):.1f} / {data.get('vram_total_gb', 0):.1f} GB"
+                    f"VRAM    : {status_response.vram_used_gb:.1f} / {status_response.vram_total_gb:.1f} GB"
                 )
-            if not data.get("api_key"):
-                warn("api_key missing from /status response — proof-of-work won't work")
-            else:
-                ok(f"api_key returned ({data['api_key'][:12]}...)")
-            return data
+                ok(f"api_key returned ({status_response.api_key[:12]}...)")
+
+                return status_response.model_dump()
+            except ValidationError as e:
+                fail(f"Invalid response format: {e}")
+                return None
         else:
             fail(f"HTTP {r.status_code}")
             return None
@@ -185,25 +205,46 @@ async def test_single_generate(
     try:
         t0 = time.time()
         r = await client.post(
-            f"{url}/generate",
-            json={"prompt": prompt, "duration": duration},
+            f"{url}/process",
+            json={
+                "action": "generate",
+                "prompt": prompt,
+                "duration": duration,
+                "seed": seed,
+            },
             headers=headers,
             timeout=DEFAULT_TIMEOUT,
         )
         elapsed = time.time() - t0
         if r.status_code == 200:
-            wav = r.content
-            ok(f"Generated in {elapsed:.1f}s — {len(wav)/1024:.1f} KB")
-            if save_dir:
-                path = f"{save_dir}/test_single.wav"
-                save_wav(wav, path)
-                dim(f"Saved → {path}")
-            pkey = r.headers.get("X-Provider-Key", "")
-            if pkey:
-                ok(f"X-Provider-Key present ({pkey[:12]}...)")
-            else:
-                warn("X-Provider-Key missing from response headers")
-            return wav
+            try:
+                header_data = {
+                    "api_key": r.headers.get("X-Provider-Key", ""),
+                    "model": r.headers.get("X-Model", ""),
+                    "duration": int(r.headers.get("X-Duration", "0")),
+                    "sample_rate": int(r.headers.get("X-Sample-Rate", "0")),
+                    "seed": int(r.headers.get("X-Seed", "0")),
+                }
+
+                gen_response = ProviderGenerateResponse(**header_data)
+
+                wav = r.content
+                ok(f"Generated in {elapsed:.1f}s — {len(wav)/1024:.1f} KB")
+                ok(f"X-Provider-Key: {gen_response.api_key[:12]}...")
+                ok(f"Model: {gen_response.model}")
+                ok(f"Duration: {gen_response.duration}s")
+                ok(f"Sample rate: {gen_response.sample_rate} Hz")
+                ok(f"Seed: {gen_response.seed}")
+
+                if save_dir:
+                    path = f"{save_dir}/test_single.wav"
+                    save_wav(wav, path)
+                    dim(f"Saved → {path}")
+
+                return wav
+            except ValidationError as e:
+                fail(f"Invalid response headers format: {e}")
+                return None
         else:
             fail(f"HTTP {r.status_code} — {r.text[:200]}")
             return None
@@ -230,52 +271,65 @@ async def test_verify_determinism(
     info(f"Seed   : {seed}")
     info(f"Duration: {duration}s")
     sep()
-
     wavs = []
     fingerprints = []
     elapsed_times = []
-
     for i in range(runs):
         print(f"\n  Run {i+1}/{runs}")
         try:
             t0 = time.time()
             r = await client.post(
-                f"{url}/generate",
-                json={"prompt": prompt, "seed": seed, "duration": duration},
+                f"{url}/process",
+                json={
+                    "action": "generate",
+                    "prompt": prompt,
+                    "seed": seed,
+                    "duration": duration,
+                },
                 timeout=DEFAULT_TIMEOUT,
                 headers=headers,
             )
             elapsed = time.time() - t0
             elapsed_times.append(elapsed)
-
             if r.status_code == 200:
-                wav = r.content
-                ok(f"Generated in {elapsed:.1f}s — {len(wav)/1024:.1f} KB")
+                try:
+                    header_data = {
+                        "api_key": r.headers.get("X-Provider-Key", ""),
+                        "model": r.headers.get("X-Model", ""),
+                        "duration": int(r.headers.get("X-Duration", "0")),
+                        "sample_rate": int(r.headers.get("X-Sample-Rate", "0")),
+                        "seed": int(r.headers.get("X-Seed", "0")),
+                    }
 
-                returned_seed = r.headers.get("X-Seed", "")
-                if returned_seed == str(seed):
-                    dim(f"X-Seed matches: {returned_seed}")
-                elif returned_seed:
-                    warn(f"X-Seed mismatch: sent {seed}, got {returned_seed}")
+                    gen_response = ProviderGenerateResponse(**header_data)
 
-                if save_dir:
-                    path = f"{save_dir}/verify_run_{i+1}.wav"
-                    save_wav(wav, path)
-                    dim(f"Saved → {path}")
+                    if gen_response.seed != seed:
+                        fail(f"Seed mismatch: sent {seed}, got {gen_response.seed}")
+                        continue
 
-                fp = mel_fingerprint(wav, duration)
-                if fp is not None:
-                    fingerprints.append(fp)
-                    wavs.append(wav)
-                else:
-                    fail("Could not compute mel fingerprint")
+                    wav = r.content
+                    ok(f"Generated in {elapsed:.1f}s — {len(wav)/1024:.1f} KB")
+                    ok(f"X-Seed matches: {gen_response.seed}")
+
+                    if save_dir:
+                        path = f"{save_dir}/verify_run_{i+1}.wav"
+                        save_wav(wav, path)
+                        dim(f"Saved → {path}")
+
+                    fp = mel_fingerprint(wav, duration)
+                    if fp is not None:
+                        fingerprints.append(fp)
+                        wavs.append(wav)
+                    else:
+                        fail("Could not compute mel fingerprint")
+                except ValidationError as e:
+                    fail(f"Invalid response headers format: {e}")
             else:
                 fail(f"HTTP {r.status_code} — {r.text[:200]}")
-
         except httpx.TimeoutException:
             fail(f"Timeout after {DEFAULT_TIMEOUT}s")
         except Exception as e:
-            fail(f"Error: {e}")
+            fail(f"Generation error: {e}")
 
     title("⑤ Similarity analysis")
     sep()
@@ -361,49 +415,74 @@ async def test_divergence(
     info("This verifies that the similarity metric actually works:")
     info("different prompts must produce DISSIMILAR audio.")
     sep()
-
     pair = random.choice(DIVERGENT_PAIRS)
     prompt_a, prompt_b = pair
     seed_a = random.randint(0, 2**31 - 1)
     seed_b = random.randint(0, 2**31 - 1)
-
     info(f"Prompt A : {prompt_a}")
     info(f"Prompt B : {prompt_b}")
     info(f"Seed A   : {seed_a}")
     info(f"Seed B   : {seed_b}")
     sep()
-
     wavs = {}
     fps = {}
-
     for label, prompt, seed in [("A", prompt_a, seed_a), ("B", prompt_b, seed_b)]:
         print(f"\n  Generating sound {label} — '{prompt}'")
         try:
             t0 = time.time()
             r = await client.post(
-                f"{url}/generate",
-                json={"prompt": prompt, "seed": seed, "duration": duration},
+                f"{url}/process",
+                json={
+                    "action": "generate",
+                    "prompt": prompt,
+                    "seed": seed,
+                    "duration": duration,
+                },
                 timeout=DEFAULT_TIMEOUT,
                 headers=headers,
             )
             elapsed = time.time() - t0
             if r.status_code == 200:
-                wav = r.content
-                ok(f"Generated in {elapsed:.1f}s — {len(wav)/1024:.1f} KB")
-                if save_dir:
-                    path = f"{save_dir}/divergence_{label.lower()}.wav"
-                    save_wav(wav, path)
-                    dim(f"Saved → {path}")
-                fp = mel_fingerprint(wav, duration)
-                if fp is not None:
-                    wavs[label] = wav
-                    fps[label] = fp
-                else:
-                    fail(f"Could not compute fingerprint for sound {label}")
+                try:
+                    header_data = {
+                        "api_key": r.headers.get("X-Provider-Key", ""),
+                        "model": r.headers.get("X-Model", ""),
+                        "duration": int(r.headers.get("X-Duration", "0")),
+                        "sample_rate": int(r.headers.get("X-Sample-Rate", "0")),
+                        "seed": int(r.headers.get("X-Seed", "0")),
+                    }
+
+                    gen_response = ProviderGenerateResponse(**header_data)
+
+                    if gen_response.seed != seed:
+                        fail(
+                            f"Sound {label}: Seed mismatch: sent {seed}, got {gen_response.seed}"
+                        )
+                        continue
+
+                    wav = r.content
+                    ok(f"Generated in {elapsed:.1f}s — {len(wav)/1024:.1f} KB")
+                    ok(f"X-Seed matches: {gen_response.seed}")
+
+                    if save_dir:
+                        path = f"{save_dir}/divergence_{label.lower()}.wav"
+                        save_wav(wav, path)
+                        dim(f"Saved → {path}")
+
+                    fp = mel_fingerprint(wav, duration)
+                    if fp is not None:
+                        wavs[label] = wav
+                        fps[label] = fp
+                    else:
+                        fail(f"Could not compute fingerprint for sound {label}")
+                except ValidationError as e:
+                    fail(f"Sound {label}: Invalid response headers format: {e}")
             else:
                 fail(f"HTTP {r.status_code} for sound {label}")
+        except httpx.TimeoutException:
+            fail(f"Sound {label}: Timeout after {DEFAULT_TIMEOUT}s")
         except Exception as e:
-            fail(f"Error for sound {label}: {e}")
+            fail(f"Sound {label}: Error: {e}")
 
     if len(fps) < 2:
         fail("Could not generate both sounds — skipping divergence analysis")

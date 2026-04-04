@@ -6,11 +6,12 @@ from datetime import datetime, timezone
 from typing import Dict, Optional, Tuple
 import httpx
 import librosa
+from pydantic import ValidationError
 import numpy as np
 from scipy.spatial.distance import cosine
 from sqlalchemy.orm import Session
 from server.config import settings
-
+from server.api.models import ProviderStatusResponse, ProviderGenerateResponse
 
 logger = logging.getLogger(__name__)
 
@@ -35,6 +36,7 @@ class ProviderVerificationService:
 
     @staticmethod
     async def _request_verification(
+        provider_id: int,
         provider_url: str,
         server_api_key: str,
         prompt: str,
@@ -43,42 +45,141 @@ class ProviderVerificationService:
         provider_api_key_hash: str,
         encoded_server_auth_key: str,
     ) -> Optional[Dict]:
-        try:
-            async with httpx.AsyncClient(timeout=settings.VERIFY_TIMEOUT) as client:
+        async with httpx.AsyncClient(timeout=settings.VERIFY_TIMEOUT) as client:
+            try:
                 response = await client.post(
-                    f"{provider_url.rstrip('/')}/generate",
+                    f"{provider_url.rstrip('/')}/process",
                     headers={
                         "Content-Type": "application/json",
                         "X-API-Key": server_api_key,
                     },
-                    json={"prompt": prompt, "seed": seed, "duration": duration},
+                    json={
+                        "action": "generate",
+                        "prompt": prompt,
+                        "seed": seed,
+                        "duration": duration,
+                    },
                 )
                 if response.status_code == 200:
-                    content_type = response.headers.get("content-type", "")
-                    if "audio" in content_type or "octet-stream" in content_type:
-                        from server.services.integrity_service import (
-                            verify_provider_hash,
-                        )
-
-                        provider_hash = response.headers.get("x-provider-hash", "")
-                        if not verify_provider_hash(
-                            provider_hash,
-                            provider_api_key_hash,
-                            encoded_server_auth_key,
-                        ):
-                            logger.warning(
-                                f"❌ {provider_url} — code integrity check failed on verify"
-                            )
-                            return None
-                        return {
-                            "wav": response.content,
-                            "model": response.headers.get("X-Model", "unknown"),
+                    try:
+                        header_data = {
+                            "api_key": response.headers.get("X-Provider-Key", ""),
+                            "model": response.headers.get("X-Model", ""),
+                            "duration": int(response.headers.get("X-Duration", "0")),
+                            "sample_rate": int(
+                                response.headers.get("X-Sample-Rate", "0")
+                            ),
+                            "seed": int(response.headers.get("X-Seed", "0")),
                         }
-            logger.warning(f"Verify request failed: HTTP {response.status_code}")
-            return None
-        except Exception as e:
-            logger.warning(f"Verify request error: {e}")
-            return None
+
+                        gen_response = ProviderGenerateResponse(**header_data)
+
+                    except ValidationError as e:
+                        logger.warning(
+                            f"🚫 {provider_url} — invalid response headers: BAN"
+                        )
+                        from server.services.provider_service import ProviderService
+                        from server.core.database import SessionLocal
+
+                        ban_db = SessionLocal()
+                        try:
+                            ProviderService._ban_provider(
+                                ban_db,
+                                provider_id,
+                                f"Invalid response headers format: {e}",
+                            )
+                            ban_db.commit()
+                        finally:
+                            ban_db.close()
+                        return None
+
+                    content_type = response.headers.get("content-type", "")
+                    if (
+                        "audio" not in content_type
+                        and "octet-stream" not in content_type
+                    ):
+                        logger.warning(f"🚫 {provider_url} — invalid content-type: BAN")
+                        from server.services.provider_service import ProviderService
+                        from server.core.database import SessionLocal
+
+                        ban_db = SessionLocal()
+                        try:
+                            ProviderService._ban_provider(
+                                ban_db, provider_id, "Invalid content-type in response"
+                            )
+                            ban_db.commit()
+                        finally:
+                            ban_db.close()
+                        return None
+
+                    provider_hash = response.headers.get("x-provider-hash", "")
+                    if not provider_hash:
+                        logger.warning(
+                            f"🚫 {provider_url} — missing X-Provider-Hash: BAN"
+                        )
+                        from server.services.provider_service import ProviderService
+                        from server.core.database import SessionLocal
+
+                        ban_db = SessionLocal()
+                        try:
+                            ProviderService._ban_provider(
+                                ban_db, provider_id, "Missing X-Provider-Hash header"
+                            )
+                            ban_db.commit()
+                        finally:
+                            ban_db.close()
+                        return None
+
+                    from server.services.integrity_service import verify_provider_hash
+
+                    if not verify_provider_hash(
+                        provider_hash,
+                        provider_api_key_hash,
+                        encoded_server_auth_key,
+                    ):
+                        logger.warning(
+                            f"🚫 {provider_url} — code integrity check failed: BAN"
+                        )
+                        from server.services.provider_service import ProviderService
+                        from server.core.database import SessionLocal
+
+                        ban_db = SessionLocal()
+                        try:
+                            ProviderService._ban_provider(
+                                ban_db,
+                                provider_id,
+                                "Code integrity check failed on verify",
+                            )
+                            ban_db.commit()
+                        finally:
+                            ban_db.close()
+                        return None
+
+                    if gen_response.seed != seed:
+                        logger.warning(f"🚫 {provider_url} — seed mismatch: BAN")
+                        from server.services.provider_service import ProviderService
+                        from server.core.database import SessionLocal
+
+                        ban_db = SessionLocal()
+                        try:
+                            ProviderService._ban_provider(
+                                ban_db, provider_id, "Seed mismatch in verify response"
+                            )
+                            ban_db.commit()
+                        finally:
+                            ban_db.close()
+                        return None
+
+                    return {
+                        "wav": response.content,
+                        "model": gen_response.model,
+                    }
+
+                logger.warning(f"Verify request failed: HTTP {response.status_code}")
+                return None
+            except Exception as e:
+                logger.warning(f"Verify request error: {e}")
+                return None
 
     @staticmethod
     def _store_sample(
@@ -295,12 +396,18 @@ class ProviderVerificationService:
     async def _fetch_trusted_model(trusted_url: str, decrypted_key: str) -> str:
         try:
             async with httpx.AsyncClient(timeout=5.0) as client:
-                r = await client.get(
-                    f"{trusted_url.rstrip('/')}/status",
+                r = await client.post(
+                    f"{trusted_url.rstrip('/')}/process",
                     headers={"X-API-Key": decrypted_key},
+                    json={"action": "status"},
                 )
                 if r.status_code == 200:
-                    return r.json().get("model", "unknown")
+                    try:
+                        data = r.json()
+                        status_response = ProviderStatusResponse(**data)
+                        return status_response.model
+                    except ValidationError:
+                        return "unknown"
         except Exception:
             pass
         return "unknown"
@@ -340,6 +447,7 @@ class ProviderVerificationService:
                 settings.VERIFY_DURATION_MIN, settings.VERIFY_DURATION_MAX
             )
             result = await ProviderVerificationService._request_verification(
+                trusted.id,
                 trusted.url,
                 decrypted_key,
                 s_prompt,
@@ -469,6 +577,7 @@ class ProviderVerificationService:
                 decrypted_key = decrypt_server_key(p.encoded_server_auth_key)
                 tasks.append(
                     ProviderVerificationService._request_verification(
+                        p.id,
                         p.url,
                         decrypted_key,
                         prompt,

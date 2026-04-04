@@ -9,6 +9,7 @@ import secrets
 import string
 from datetime import datetime, timezone, timedelta
 from typing import Optional, Dict, Any
+from pydantic import ValidationError
 from sqlalchemy.orm import Session
 from collections import defaultdict
 from server.services.fal_service import FalService
@@ -17,6 +18,7 @@ from server.core.database import Provider, ProviderJob, OwnershipLog
 from server.config import settings
 from server.core.security import encrypt_server_key, decrypt_server_key
 from server.services.integrity_service import verify_provider_hash
+from server.api.models import ProviderStatusResponse, ProviderGenerateResponse
 
 PING_TIMEOUT = 5.0
 GENERATE_TIMEOUT = 180.0
@@ -67,19 +69,26 @@ class ProviderService:
     async def _ping_provider(url: str, encoded_server_auth_key: str) -> Optional[Dict]:
         try:
             async with httpx.AsyncClient(timeout=PING_TIMEOUT) as client:
-                response = await client.get(
-                    f"{url.rstrip('/')}/status",
+                response = await client.post(
+                    f"{url.rstrip('/')}/process",
                     headers={
                         **settings.BROWSER_HEADERS,
                         "X-API-Key": decrypt_server_key(encoded_server_auth_key),
                     },
+                    json={"action": "status"},
                 )
-
                 if response.status_code == 200:
-                    data = response.json()
-                    data["_provider_hash"] = response.headers.get("x-provider-hash", "")
-                    return data
+                    try:
+                        data = response.json()
+                        status_response = ProviderStatusResponse(**data)
 
+                        result = status_response.model_dump()
+                        result["_provider_hash"] = response.headers.get(
+                            "x-provider-hash", ""
+                        )
+                        return result
+                    except ValidationError:
+                        return None
         except Exception:
             return None
         return None
@@ -122,7 +131,7 @@ class ProviderService:
             if key_hash != provider.api_key:
                 print(f"⚠️ {provider.name} — invalid API key in status response")
                 ProviderService._ban_provider(
-                    db, provider.id, "Invalid API key returned in /status response"
+                    db, provider.id, "Invalid API key returned in status response"
                 )
                 continue
             provider_hash = result.get("_provider_hash", "")
@@ -238,6 +247,14 @@ class ProviderService:
             db.commit()
             print(f"🚫 Provider {provider.name} BANNED: {reason}")
 
+            from server.services.admin_notification_service import (
+                AdminNotificationService,
+            )
+
+            AdminNotificationService.notify_provider_banned(
+                provider.name, provider_id, reason
+            )
+
     @staticmethod
     async def _generate_at_provider(
         provider: Dict, prompt: str, duration: int, db: Session
@@ -251,28 +268,64 @@ class ProviderService:
             seed = random.randint(0, 2**31 - 1)
             async with httpx.AsyncClient(timeout=GENERATE_TIMEOUT) as client:
                 response = await client.post(
-                    f"{provider['url'].rstrip('/')}/generate",
+                    f"{provider['url'].rstrip('/')}/process",
                     headers={
                         **settings.BROWSER_HEADERS,
                         "X-API-Key": provider["server_api_key"],
                     },
-                    json={"prompt": prompt, "duration": duration, "seed": seed},
+                    json={
+                        "action": "generate",
+                        "prompt": prompt,
+                        "duration": duration,
+                        "seed": seed,
+                    },
                 )
-
                 if response.status_code != 200:
                     print(
                         f"❌ Provider {provider['name']} returned HTTP {response.status_code}"
                     )
                     return None
 
-                provider_hash = response.headers.get("x-provider-hash", "")
-                returned_key = response.headers.get("X-Provider-Key", "")
-                key_hash = hashlib.sha256(returned_key.encode()).hexdigest()
                 db_provider = (
                     db.query(Provider).filter(Provider.id == provider["id"]).first()
                 )
-                if not db_provider or key_hash != db_provider.api_key:
-                    print(f"❌ {provider['name']} — invalid key in generation response")
+                if not db_provider:
+                    print(f"❌ Provider {provider['name']} — not found in database")
+                    return None
+
+                try:
+                    header_data = {
+                        "api_key": response.headers.get("X-Provider-Key", ""),
+                        "model": response.headers.get("X-Model", ""),
+                        "duration": int(response.headers.get("X-Duration", "0")),
+                        "sample_rate": int(response.headers.get("X-Sample-Rate", "0")),
+                        "seed": int(response.headers.get("X-Seed", "0")),
+                    }
+
+                    gen_response = ProviderGenerateResponse(**header_data)
+
+                except ValidationError as e:
+                    print(
+                        f"🚫 {provider['name']} — invalid response headers format: BAN"
+                    )
+                    ProviderService._ban_provider(
+                        db, provider["id"], f"Invalid response headers format: {e}"
+                    )
+                    return None
+
+                provider_hash = response.headers.get("x-provider-hash", "")
+                if not provider_hash:
+                    print(
+                        f"🚫 Provider {provider['name']} — missing X-Provider-Hash: BAN"
+                    )
+                    ProviderService._ban_provider(
+                        db, provider["id"], "Missing X-Provider-Hash header"
+                    )
+                    return None
+
+                key_hash = hashlib.sha256(gen_response.api_key.encode()).hexdigest()
+                if key_hash != db_provider.api_key:
+                    print(f"🚫 {provider['name']} — invalid key in response: BAN")
                     ProviderService._ban_provider(
                         db, provider["id"], "Invalid API key in response"
                     )
@@ -283,17 +336,25 @@ class ProviderService:
                     db_provider.api_key,
                     db_provider.encoded_server_auth_key,
                 ):
-                    print(
-                        f"❌ {provider['name']} — code integrity check failed on generate"
-                    )
+                    print(f"🚫 {provider['name']} — code integrity check failed: BAN")
                     ProviderService._ban_provider(
                         db, provider["id"], "Code integrity check failed on generate"
                     )
                     return None
 
+                if gen_response.seed != seed:
+                    print(f"🚫 {provider['name']} — seed mismatch: BAN")
+                    ProviderService._ban_provider(
+                        db, provider["id"], "Seed mismatch in response"
+                    )
+                    return None
+
                 content_type = response.headers.get("content-type", "")
                 if "audio" not in content_type and "octet-stream" not in content_type:
-                    print(f"❌ Provider returned invalid content-type: {content_type}")
+                    print(f"🚫 {provider['name']} — invalid content-type: BAN")
+                    ProviderService._ban_provider(
+                        db, provider["id"], "Invalid content-type in response"
+                    )
                     return None
 
                 return response.content

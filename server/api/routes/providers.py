@@ -5,6 +5,7 @@ from fastapi import (
     Header,
     WebSocketDisconnect,
     WebSocket,
+    Request,
 )
 import asyncio
 from sqlalchemy.orm import Session
@@ -147,10 +148,18 @@ def get_my_provider_stats(
 
 @router.post("/heartbeat")
 async def provider_heartbeat(
+    request: Request,
     x_api_key: str = Header(...),
     x_provider_hash: str = Header(...),
     db: Session = Depends(get_db),
 ):
+    try:
+        body = await request.json()
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid JSON")
+
+    if body is not True:
+        raise HTTPException(status_code=400, detail="Invalid heartbeat payload")
 
     api_key_hash = hashlib.sha256(x_api_key.encode()).hexdigest()
     provider = (
@@ -177,18 +186,16 @@ async def provider_heartbeat(
         )
         raise HTTPException(status_code=403, detail="Code integrity check failed")
 
-    return {
-        "status": "ok",
-        "provider_id": provider.id,
-        "name": provider.name,
-        "last_seen": provider.last_seen.isoformat(),
-    }
+    provider.last_seen = datetime.now(timezone.utc).replace(tzinfo=None)
+    db.commit()
+
+    return True
 
 
 @router.websocket("/connect")
 async def websocket_endpoint(
     websocket: WebSocket,
-    x_provider_key: str = Header(None),
+    x_provider_key: str = Header(...),
     db: Session = Depends(get_db),
 ):
     if not x_provider_key:
@@ -225,7 +232,6 @@ async def websocket_endpoint(
     provider.last_seen = datetime.now(timezone.utc).replace(tzinfo=None)
     provider.is_online = True
     db.commit()
-
     db.close()
 
     last_flush = datetime.now(timezone.utc)
@@ -237,6 +243,20 @@ async def websocket_endpoint(
                 data = await asyncio.wait_for(
                     websocket.receive_text(), timeout=FLUSH_INTERVAL
                 )
+                print(f"🚫 {pid} sent unsolicited message: {data}")
+                from server.core.database import SessionLocal
+
+                ban_db = SessionLocal()
+                try:
+                    ProviderService._ban_provider(
+                        ban_db, pid, "Unsolicited message on WebSocket"
+                    )
+                    ban_db.commit()
+                finally:
+                    ban_db.close()
+
+                await websocket.close(code=1008)
+                return
 
             except asyncio.TimeoutError:
                 now = datetime.now(timezone.utc)

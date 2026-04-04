@@ -1,6 +1,7 @@
-from pydantic import BaseModel, EmailStr, validator
+from pydantic import BaseModel, EmailStr, validator, Field
 from typing import Optional, List
 from datetime import datetime
+from enum import Enum
 
 
 class UserRegister(BaseModel):
@@ -189,3 +190,53 @@ class EmailStatsResponse(BaseModel):
 
 class RetryEmailsRequest(BaseModel):
     email_ids: List[int]
+
+
+class SupportedModel(str, Enum):
+    STABLE_AUDIO = "stable-audio-open-1.0"
+
+
+class SupportedModelId(str, Enum):
+    STABLE_AUDIO_ID = "stabilityai/stable-audio-open-1.0"
+
+
+class SupportedDevice(str, Enum):
+    CUDA = "cuda"
+
+
+class ProviderStatusResponse(BaseModel):
+    available: bool
+    api_key: str = Field(..., min_length=48, max_length=64)
+    model: SupportedModel
+    model_id: SupportedModelId
+    device: SupportedDevice
+    generating: bool
+    vram_total_gb: float = Field(..., ge=0, le=999999)
+    vram_used_gb: float = Field(..., ge=0, le=999999)
+
+    class Config:
+        extra = "forbid"
+
+
+class HealthStatus(str, Enum):
+    OK = "ok"
+
+
+class ProviderHealthResponse(BaseModel):
+    status: HealthStatus = Field(..., description="Must be 'ok'")
+    model: SupportedModel
+    model_id: SupportedModelId
+
+    class Config:
+        extra = "forbid"
+
+
+class ProviderGenerateResponse(BaseModel):
+    api_key: str = Field(..., min_length=48, max_length=64)
+    model: SupportedModel
+    duration: int = Field(..., ge=2, le=30)
+    sample_rate: int = Field(..., ge=44100, le=48000)
+    seed: int = Field(..., ge=0, le=2**31 - 1)
+
+    class Config:
+        extra = "forbid"

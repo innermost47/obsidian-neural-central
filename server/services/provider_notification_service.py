@@ -196,3 +196,61 @@ class ProviderNotificationService:
             content=content,
             email_type="provider_subscription_cancelled",
         )
+
+    @staticmethod
+    def notify_provider_banned(
+        provider_email: str, provider_name: str, reason: str
+    ) -> bool:
+        content = f"""
+        {section_title("Account suspended")}
+        <h1 style="color:#1a1a1a;font-size:22px;font-weight:700;margin:0 0 12px;">
+          🚫 Your provider account has been suspended
+        </h1>
+        <p style="color:#4a4a4a;font-size:15px;line-height:1.7;margin:0 0 24px;">
+          Your node has been automatically removed from the OBSIDIAN Neural network
+          due to integrity violations. This decision is final.
+        </p>
+        {info_box(f'''
+          <table cellpadding="0" cellspacing="0" border="0" width="100%">
+            {stat_row("Provider", provider_name)}
+            {stat_row("Status", '<span style="color:#b8605c;font-weight:700;">BANNED</span>')}
+            {stat_row("Reason", reason)}
+            {stat_row("Time", _now())}
+          </table>
+        ''')}
+        <p style="color:#4a4a4a;font-size:13px;line-height:1.6;margin:16px 0 0;">
+          <strong>What happened:</strong><br>
+          Your provider node failed critical security and integrity checks during operation.
+          The OBSIDIAN Neural network enforces strict validation of all responses to protect
+          the platform and our users.
+        </p>
+        <p style="color:#4a4a4a;font-size:13px;line-height:1.6;margin:12px 0 0;">
+          <strong>Common causes:</strong><br>
+          • Invalid or malformed response headers<br>
+          • Incorrect seed values in generation responses<br>
+          • Code integrity verification failures<br>
+          • Invalid content-type on audio responses<br>
+          • Unsolicited WebSocket messages
+        </p>
+        <p style="color:#4a4a4a;font-size:13px;line-height:1.6;margin:12px 0 0;">
+          <strong>Next steps:</strong><br>
+          Review the reason above and check your provider code against the protocol specification.
+          If you believe this is an error, contact support with logs and details.
+        </p>
+        <p style="color:#cccccc;font-size:12px;margin:16px 0 0;">
+          Your subscription tier has been downgraded to free. You may reapply as a provider
+          after addressing the issues.
+        </p>
+        """
+        try:
+            return EmailService._send_email(
+                provider_email,
+                f"🚫 Provider account suspended — {provider_name}",
+                base_template(
+                    content, preheader="Your provider account has been suspended"
+                ),
+                email_type="provider_banned",
+            )
+        except Exception as e:
+            logger.error(f"Failed to send ban notification to {provider_email}: {e}")
+            return False
