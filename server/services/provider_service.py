@@ -103,6 +103,7 @@ class ProviderService:
                 Provider.is_active == True,
                 Provider.is_banned == False,
                 Provider.is_disposable == True,
+                Provider.activation_token_used == True,
             )
             .all()
         )
@@ -619,22 +620,28 @@ class ProviderService:
         stripe_account_id: Optional[str] = None,
         user_id: Optional[int] = None,
     ) -> Dict:
-
         api_key = ProviderService.generate_api_key()
         api_key_hash = hashlib.sha256(api_key.encode()).hexdigest()
-
+        api_key_encrypted = encrypt_server_key(api_key)
         s_auth_key = ProviderService.generate_api_key()
         s_auth_key_encrypted = encrypt_server_key(s_auth_key)
+
+        activation_token = secrets.token_urlsafe(32)
+        activation_token_expires_at = datetime.utcnow() + timedelta(hours=24)
 
         provider = Provider(
             name=name,
             url=url,
             api_key=api_key_hash,
+            encoded_api_key=api_key_encrypted,
             encoded_server_auth_key=s_auth_key_encrypted,
             stripe_account_id=stripe_account_id if stripe_account_id else None,
             is_active=True,
             is_banned=False,
             user_id=user_id or None,
+            activation_token=activation_token,
+            activation_token_used=False,
+            activation_token_expires_at=activation_token_expires_at,
         )
         db.add(provider)
         db.commit()
@@ -657,6 +664,13 @@ class ProviderService:
             "url": provider.url,
             "api_key": api_key,
             "server_auth_key": s_auth_key,
+            "activation_token": activation_token,
+            "activation_token_expires_at": activation_token_expires_at.isoformat(),
+            "docker_command": (
+                f"docker run -e OBSIDIAN_TOKEN={activation_token} "
+                f"-e CENTRAL_SERVER_URL={settings.APP_URL} "
+                f"ghcr.io/obsidian-neural/provider:latest"
+            ),
         }
 
     @staticmethod
@@ -666,15 +680,19 @@ class ProviderService:
         providers = db.query(Provider).all()
         active = [p for p in providers if p.is_active and not p.is_banned]
         banned = [p for p in providers if p.is_banned]
-
+        pending = [
+            p for p in providers if not p.is_banned and not p.activation_token_used
+        ]
         return {
             "total": len(providers),
             "active": len(active),
             "banned": len(banned),
+            "pending_activation": len(pending),
             "providers": [
                 {
                     "name": p.name,
                     "is_active": p.is_active,
+                    "activated": p.activation_token_used,
                     "jobs_done": p.jobs_done,
                     "last_seen": p.last_seen.isoformat() if p.last_seen else None,
                 }

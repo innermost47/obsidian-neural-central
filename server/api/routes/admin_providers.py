@@ -98,6 +98,7 @@ async def list_providers(
                 "last_ping": p.last_ping.isoformat() if p.last_ping else None,
                 "last_seen": p.last_seen.isoformat() if p.last_seen else None,
                 "created_at": p.created_at.isoformat() if p.created_at else None,
+                "activation_token_used": p.activation_token_used,
             }
             for p in providers
         ]

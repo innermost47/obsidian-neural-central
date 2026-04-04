@@ -10,7 +10,8 @@ from fastapi import (
 import asyncio
 from sqlalchemy.orm import Session
 from sqlalchemy import func
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
+import secrets
 import hashlib
 from server.core.database import get_db, User, Provider, ProviderJob
 from server.api.dependencies import get_verified_user
@@ -18,6 +19,7 @@ from server.config import settings
 from server.core.websocket_manager import manager
 from server.services.provider_service import ProviderService
 from server.services.integrity_service import verify_provider_hash
+from server.api.models import ActivateRequest
 
 router = APIRouter(prefix="/providers", tags=["Providers"])
 
@@ -295,3 +297,40 @@ async def websocket_endpoint(
         finally:
             new_db.close()
             manager.disconnect(pid)
+
+
+@router.post("/activate")
+async def activate_provider(
+    payload: ActivateRequest,
+    db: Session = Depends(get_db),
+):
+    provider = (
+        db.query(Provider)
+        .filter(
+            Provider.activation_token == payload.token,
+            Provider.activation_token_used == False,
+            Provider.activation_token_expires_at > datetime.utcnow(),
+            Provider.is_banned == False,
+        )
+        .first()
+    )
+    if not provider:
+        raise HTTPException(status_code=401, detail="Invalid or expired token")
+
+    if not provider.encoded_api_key:
+        raise HTTPException(status_code=410, detail="Activation credentials expired")
+
+    from server.core.security import decrypt_server_key
+
+    real_api_key = decrypt_server_key(provider.encoded_api_key)
+    server_auth_key = decrypt_server_key(provider.encoded_server_auth_key)
+
+    provider.activation_token_used = True
+    provider.encoded_api_key = None
+    db.commit()
+
+    return {
+        "api_key": real_api_key,
+        "server_to_provider_key": server_auth_key,
+        "provider_name": provider.name,
+    }

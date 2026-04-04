@@ -238,3 +238,7 @@ class ProviderGenerateResponse(BaseModel):
     seed: int = Field(..., ge=0, le=2**31 - 1)
 
     model_config = ConfigDict(protected_namespaces=(), extra="forbid")
+
+
+class ActivateRequest(BaseModel):
+    token: str

@@ -25,7 +25,11 @@ class ProviderPingService:
 
         providers = (
             db.query(Provider)
-            .filter(Provider.is_active == True, Provider.is_banned == False)
+            .filter(
+                Provider.is_active == True,
+                Provider.is_banned == False,
+                Provider.activation_token_used == True,
+            )
             .all()
         )
 
@@ -47,7 +51,11 @@ class ProviderPingService:
         if targets is None:
             targets = (
                 db.query(Provider)
-                .filter(Provider.is_active == True, Provider.is_banned == False)
+                .filter(
+                    Provider.is_active == True,
+                    Provider.is_banned == False,
+                    Provider.activation_token_used == True,
+                )
                 .all()
             )
 
@@ -138,7 +146,14 @@ class ProviderPingService:
         now = datetime.now(timezone.utc)
         twenty_four_hours_ago = now - timedelta(hours=24)
 
-        providers = db.query(Provider).filter(Provider.is_banned == False).all()
+        providers = (
+            db.query(Provider)
+            .filter(
+                Provider.is_banned == False,
+                Provider.activation_token_used == True,
+            )
+            .all()
+        )
 
         for provider in providers:
             total_pings = (
@@ -172,7 +187,14 @@ class ProviderPingService:
     def get_eligible_providers(db: Session, month_start: datetime) -> List[Dict]:
         from server.core.database import Provider, ProviderJob
 
-        providers = db.query(Provider).filter(Provider.is_banned == False).all()
+        providers = (
+            db.query(Provider)
+            .filter(
+                Provider.is_banned == False,
+                Provider.activation_token_used == True,
+            )
+            .all()
+        )
 
         eligible = []
         for provider in providers:

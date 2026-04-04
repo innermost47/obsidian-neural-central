@@ -763,6 +763,7 @@ class ProviderVerificationService:
                 Provider.is_active == True,
                 Provider.is_banned == False,
                 Provider.is_trusted == False,
+                Provider.activation_token_used == True,
             )
             .all()
         )
@@ -930,7 +931,11 @@ class ProviderVerificationService:
                     num_providers = max(1, total_providers // 3)
                     providers = (
                         db.query(Provider)
-                        .filter(Provider.is_active == True, Provider.is_banned == False)
+                        .filter(
+                            Provider.is_active == True,
+                            Provider.is_banned == False,
+                            Provider.activation_token_used == True,
+                        )
                         .order_by(func.random())
                         .limit(num_providers)
                         .all()

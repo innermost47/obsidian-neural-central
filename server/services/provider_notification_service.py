@@ -27,6 +27,7 @@ def _get_active_provider_emails(db: Session) -> list[str]:
         .filter(
             Provider.is_active,
             Provider.is_banned == False,
+            Provider.activation_token_used == True,
             User.is_admin == False,
             Provider.user_id.isnot(None),
         )

@@ -247,6 +247,10 @@ class Provider(Base):
     is_generating = Column(Boolean, default=False, nullable=False)
     is_disposable = Column(Boolean, default=True, nullable=False)
     encoded_server_auth_key = Column(String(500), nullable=True)
+    activation_token = Column(String(255), nullable=True, unique=True)
+    activation_token_used = Column(Boolean, default=False, nullable=False)
+    activation_token_expires_at = Column(DateTime, nullable=True)
+    encoded_api_key = Column(String(500), nullable=True)
     user_id = Column(
         Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True
     )
