@@ -1,4 +1,4 @@
-from pydantic import BaseModel, EmailStr, validator, Field
+from pydantic import BaseModel, EmailStr, validator, Field, ConfigDict
 from typing import Optional, List
 from datetime import datetime
 from enum import Enum
@@ -214,10 +214,7 @@ class ProviderStatusResponse(BaseModel):
     vram_total_gb: float = Field(..., ge=0, le=999999)
     vram_used_gb: float = Field(..., ge=0, le=999999)
 
-    model_config = {"protected_namespaces": ()}
-
-    class Config:
-        extra = "forbid"
+    model_config = ConfigDict(protected_namespaces=(), extra="forbid")
 
 
 class HealthStatus(str, Enum):
@@ -226,11 +223,11 @@ class HealthStatus(str, Enum):
 
 class ProviderHealthResponse(BaseModel):
     status: HealthStatus = Field(..., description="Must be 'ok'")
+    model_loaded: bool
     model: SupportedModel
     model_id: SupportedModelId
 
-    class Config:
-        extra = "forbid"
+    model_config = ConfigDict(protected_namespaces=(), extra="forbid")
 
 
 class ProviderGenerateResponse(BaseModel):
@@ -240,7 +237,4 @@ class ProviderGenerateResponse(BaseModel):
     sample_rate: int = Field(..., ge=44100, le=48000)
     seed: int = Field(..., ge=0, le=2**31 - 1)
 
-    model_config = {"protected_namespaces": ()}
-
-    class Config:
-        extra = "forbid"
+    model_config = ConfigDict(protected_namespaces=(), extra="forbid")
