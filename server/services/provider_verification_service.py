@@ -967,7 +967,7 @@ class ProviderVerificationService:
         api_key = decrypt_server_key(provider.encoded_server_auth_key)
         url = provider.url.rstrip("/")
 
-        test_cases = [
+        all_test_cases = [
             ("Invalid action 'invalid_action'", {"action": "invalid_action"}, 422),
             ("Missing action field", {"prompt": "test"}, 422),
             (
@@ -1015,14 +1015,37 @@ class ProviderVerificationService:
                 {"action": "generate", "prompt": "test", "duration": 10, "seed": 2**31},
                 422,
             ),
+        ]
+
+        canary_test_cases = [
             ("Canary: action 'corrupt'", {"action": "corrupt"}, 422),
             ("Canary: action 'test_integrity'", {"action": "test_integrity"}, 422),
             ("Canary: action 'debug'", {"action": "debug"}, 422),
             ("Canary: action 'admin'", {"action": "admin"}, 422),
+            ("Canary: action 'exec'", {"action": "exec"}, 422),
+            ("Canary: action 'eval'", {"action": "eval"}, 422),
+            ("Canary: action 'shell'", {"action": "shell"}, 422),
+            ("Canary: action 'bypass'", {"action": "bypass"}, 422),
+            ("Canary: action 'override'", {"action": "override"}, 422),
+            ("Canary: action 'reset'", {"action": "reset"}, 422),
+            ("Canary: action 'config'", {"action": "config"}, 422),
+            ("Canary: action 'ping'", {"action": "ping"}, 422),
+            ("Canary: action 'diag'", {"action": "diag"}, 422),
+            ("Canary: action 'raw'", {"action": "raw"}, 422),
+            ("Canary: action 'passthrough'", {"action": "passthrough"}, 422),
         ]
 
-        print(
-            f"\n🧪 Testing error handling for provider {provider.name} (ID: {provider.id})..."
+        num_regular = random.randint(4, len(all_test_cases))
+        selected_regular = random.sample(all_test_cases, num_regular)
+
+        num_canary = random.randint(2, len(canary_test_cases))
+        selected_canary = random.sample(canary_test_cases, num_canary)
+
+        test_cases = selected_regular + selected_canary
+        random.shuffle(test_cases)
+
+        logger.info(
+            f"🧪 Testing provider {provider.name} (ID: {provider.id}) — {len(test_cases)} tests ({num_canary} canary)"
         )
         passed = 0
         failed = 0
@@ -1033,35 +1056,31 @@ class ProviderVerificationService:
                 try:
                     response = await client.post(
                         f"{url}/process",
-                        headers={
-                            **settings.BROWSER_HEADERS,
-                            "X-API-Key": api_key,
-                        },
+                        headers={**settings.BROWSER_HEADERS, "X-API-Key": api_key},
                         json=payload,
                     )
 
                     if response.status_code == expected_status:
-                        print(f"  ✅ {test_name}: HTTP {response.status_code}")
+                        logger.debug(f"  ✅ {test_name}: HTTP {response.status_code}")
                         passed += 1
                     else:
-                        print(
+                        logger.warning(
                             f"  ❌ {test_name}: expected {expected_status}, got {response.status_code}"
                         )
                         failed += 1
 
                         if "Canary:" in test_name:
-                            print(
-                                f"  🚫 CANARY TEST FAILED - Code modification detected!"
+                            logger.warning(
+                                f"  🚫 CANARY FAILED — code modification detected on {provider.name}"
                             )
                             canary_failed = True
                             break
 
                 except Exception as e:
-                    print(f"  ❌ {test_name}: exception {e}")
+                    logger.error(f"  ❌ {test_name}: exception {e}")
                     failed += 1
 
-                inter_test_delay = random.uniform(0.5, 3)
-                await asyncio.sleep(inter_test_delay)
+                await asyncio.sleep(random.uniform(0.5, 3))
 
         if canary_failed:
             await ProviderService._ban_provider(
@@ -1069,10 +1088,11 @@ class ProviderVerificationService:
                 provider.id,
                 reason="Canary test failed: provider accepted invalid action (code modification detected)",
             )
-            print(f"🚫 Provider {provider.name} has been BANNED")
+            logger.warning(f"🚫 Provider {provider.name} BANNED")
             return
 
-        print(f"✅ Error handling test complete: {passed}/{passed+failed} passed")
-
+        logger.info(
+            f"✅ Error handling complete for {provider.name}: {passed}/{passed+failed} passed"
+        )
         if failed > 0:
-            print(f"⚠️  {provider.name} failed {failed} test(s)")
+            logger.warning(f"⚠️  {provider.name} failed {failed} test(s)")
