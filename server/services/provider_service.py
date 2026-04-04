@@ -740,9 +740,8 @@ class ProviderService:
                 last_seen_val = last_seen_val.replace(tzinfo=timezone.utc)
             current_session_minutes = max(0, (now - last_seen_val).total_seconds() / 60)
 
-        yesterday = (now - timedelta(days=1)).date()
         minutes_24h = (
-            sum(s.total_presence_minutes for s in stats_month if s.date >= yesterday)
+            sum(s.total_presence_minutes for s in stats_month if s.date == now.date())
             + current_session_minutes
         )
         month_hours = round((total_minutes_base + current_session_minutes) / 60, 1)
