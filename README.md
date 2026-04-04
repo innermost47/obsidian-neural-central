@@ -297,7 +297,11 @@ All bans trigger:
 
 A provider is eligible if:
 
-1. **uptime_score ≥ 80%** — responded to at least 80% of random pings that month
+1. **uptime_score = 1.0** — two conditions must both be met for the previous month:
+   - Worked **≥ 8h on at least 80% of their active days** in the month
+   - Accumulated **≥ 80% of their total expected hours** for the period
+   - Providers who joined mid-month are evaluated proportionally from their join date — a provider who joined on the 25th has 5 expected days, not 30
+   - Providers who joined on the last day of the month are excluded from that month's redistribution
 2. **billable_jobs ≥ 1** — processed at least 1 real job (not fal.ai fallback) that month
 
 If no provider is eligible, no redistribution occurs.

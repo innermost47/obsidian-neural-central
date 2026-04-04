@@ -376,44 +376,59 @@ def compute_and_redistribute():
         providers = db.query(Provider).filter(Provider.is_banned == False).all()
 
         for provider in providers:
-            total_minutes = (
-                db.query(func.sum(ProviderDailyStats.total_presence_minutes))
-                .filter(
-                    ProviderDailyStats.provider_id == provider.id,
-                    ProviderDailyStats.date >= last_month_start.date(),
-                    ProviderDailyStats.date < last_month_end.date(),
-                )
-                .scalar()
-                or 0.0
-            )
-
             provider_created_at = (
                 provider.created_at.replace(tzinfo=None)
                 if provider.created_at
                 else last_month_start
             )
-            effective_start = max(last_month_start, provider_created_at)
-            total_hours_in_period = (
-                last_month_end - effective_start
-            ).total_seconds() / 3600
+            effective_start = max(last_month_start, provider_created_at).date()
+            effective_end = last_month_end.date()
 
-            target_hours = max(1, (total_hours_in_period / 24) * REQUIRED_DAILY_HOURS)
+            expected_days = (effective_end - effective_start).days
+            if expected_days == 0:
+                log(f"⏭️  {provider.name} — arrived last day of month, skipping")
+                provider.uptime_score = 0.0
+                continue
 
+            stats = (
+                db.query(ProviderDailyStats)
+                .filter(
+                    ProviderDailyStats.provider_id == provider.id,
+                    ProviderDailyStats.date >= effective_start,
+                    ProviderDailyStats.date < effective_end,
+                )
+                .all()
+            )
+
+            total_minutes = sum(s.total_presence_minutes for s in stats)
             real_hours = total_minutes / 60
+            target_hours = expected_days * REQUIRED_DAILY_HOURS
 
-            raw_ratio = real_hours / target_hours
+            days_with_quota = sum(
+                1
+                for s in stats
+                if s.total_presence_minutes >= REQUIRED_DAILY_HOURS * 60
+            )
+            days_ratio = days_with_quota / expected_days
 
-            if raw_ratio >= UPTIME_THRESHOLD:
+            hours_ratio = real_hours / target_hours if target_hours > 0 else 0
+
+            if days_ratio >= UPTIME_THRESHOLD and hours_ratio >= UPTIME_THRESHOLD:
                 provider.uptime_score = 1.0
-                status_msg = "✅ VALIDATED (>=80%)"
+                status_msg = "✅ VALIDATED"
             else:
-                provider.uptime_score = raw_ratio
-                status_msg = f"⚠️ PARTIAL ({int(raw_ratio*100)}%)"
+                provider.uptime_score = min(days_ratio, hours_ratio)
+                status_msg = (
+                    f"⚠️ PARTIAL — "
+                    f"{days_with_quota}/{expected_days} days ({int(days_ratio*100)}%), "
+                    f"{real_hours:.1f}h/{target_hours:.1f}h ({int(hours_ratio*100)}%)"
+                )
 
             log(
-                f"📊 Provider: {provider.name.ljust(15)} | "
-                f"Real: {real_hours:>5.1f}h / Target: {target_hours:>5.1f}h | "
-                f"Status: {status_msg}"
+                f"📊 {provider.name.ljust(15)} | "
+                f"Days: {days_with_quota}/{expected_days} ({int(days_ratio*100)}%) | "
+                f"Hours: {real_hours:.1f}/{target_hours:.1f}h | "
+                f"{status_msg}"
             )
 
         db.commit()
