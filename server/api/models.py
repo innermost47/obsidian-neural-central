@@ -214,6 +214,8 @@ class ProviderStatusResponse(BaseModel):
     vram_total_gb: float = Field(..., ge=0, le=999999)
     vram_used_gb: float = Field(..., ge=0, le=999999)
 
+    model_config = {"protected_namespaces": ()}
+
     class Config:
         extra = "forbid"
 
@@ -237,6 +239,8 @@ class ProviderGenerateResponse(BaseModel):
     duration: int = Field(..., ge=2, le=30)
     sample_rate: int = Field(..., ge=44100, le=48000)
     seed: int = Field(..., ge=0, le=2**31 - 1)
+
+    model_config = {"protected_namespaces": ()}
 
     class Config:
         extra = "forbid"
