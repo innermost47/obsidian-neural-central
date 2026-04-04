@@ -262,14 +262,15 @@ class ProviderGenerateResponse(BaseModel):
 
 - Runs as a background task, independently of the verification loop
 - At random intervals (1h–6h), tests ~1/3 of active providers, chosen at random
-- Each provider is sent a battery of invalid requests designed to confirm the `/process` endpoint correctly rejects them with HTTP 422:
-  - Unknown `action` values: `"invalid_action"`, `"corrupt"`, `"debug"`, `"admin"`, `"test_integrity"`
+- Each session draws a **random subset** of tests (4–10 regular + 4–8 canary), **shuffled together** — canary requests are indistinguishable from regular ones by position or timing
+- Regular invalid requests cover:
+  - Unknown `action` values
   - Missing required fields (e.g., no `action`, no `prompt` on generate)
   - Extra fields (rejected by `extra="forbid"`)
   - Out-of-range `duration` (too low, too high)
   - Invalid `seed` (negative, above 2^31-1, wrong type)
   - Empty `prompt` on generate
-- **Canary actions** (`"corrupt"`, `"debug"`, `"admin"`, `"test_integrity"`) are specifically designed to detect whitelist bypasses: if a provider accepts any of them (i.e., does not return 422), it signals that the action validation has been tampered with → provider is **immediately banned** with reason `"Canary test failed: provider accepted invalid action (code modification detected)"`
+- **Canary actions are randomly generated** (`secrets.token_hex(6)`) at each session — unpredictable even with full access to the source code. A provider cannot anticipate or whitelist them without breaking its own validation logic. If any canary action is accepted (i.e., does not return 422), it signals that action validation has been tampered with → provider is **immediately banned** with reason `"Canary test failed: provider accepted invalid action (code modification detected)"`
 - Inter-test delays are randomised (0.5s–3s per request, 0s–2h before the first test) to prevent timing fingerprinting
 - Each provider is tested in its own isolated DB session to avoid long-lived session state issues
 

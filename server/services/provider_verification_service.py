@@ -1,6 +1,7 @@
 import asyncio
 import io
 import logging
+import secrets
 import random
 from datetime import datetime, timezone
 from typing import Dict, Optional, Tuple
@@ -1017,35 +1018,19 @@ class ProviderVerificationService:
             ),
         ]
 
-        canary_test_cases = [
-            ("Canary: action 'corrupt'", {"action": "corrupt"}, 422),
-            ("Canary: action 'test_integrity'", {"action": "test_integrity"}, 422),
-            ("Canary: action 'debug'", {"action": "debug"}, 422),
-            ("Canary: action 'admin'", {"action": "admin"}, 422),
-            ("Canary: action 'exec'", {"action": "exec"}, 422),
-            ("Canary: action 'eval'", {"action": "eval"}, 422),
-            ("Canary: action 'shell'", {"action": "shell"}, 422),
-            ("Canary: action 'bypass'", {"action": "bypass"}, 422),
-            ("Canary: action 'override'", {"action": "override"}, 422),
-            ("Canary: action 'reset'", {"action": "reset"}, 422),
-            ("Canary: action 'config'", {"action": "config"}, 422),
-            ("Canary: action 'ping'", {"action": "ping"}, 422),
-            ("Canary: action 'diag'", {"action": "diag"}, 422),
-            ("Canary: action 'raw'", {"action": "raw"}, 422),
-            ("Canary: action 'passthrough'", {"action": "passthrough"}, 422),
+        dynamic_canaries = [
+            (f"Canary: random action '{token}'", {"action": token}, 422)
+            for token in [secrets.token_hex(6) for _ in range(random.randint(4, 8))]
         ]
 
         num_regular = random.randint(4, len(all_test_cases))
         selected_regular = random.sample(all_test_cases, num_regular)
 
-        num_canary = random.randint(2, len(canary_test_cases))
-        selected_canary = random.sample(canary_test_cases, num_canary)
-
-        test_cases = selected_regular + selected_canary
+        test_cases = selected_regular + dynamic_canaries
         random.shuffle(test_cases)
 
         logger.info(
-            f"🧪 Testing provider {provider.name} (ID: {provider.id}) — {len(test_cases)} tests ({num_canary} canary)"
+            f"🧪 Testing provider {provider.name} (ID: {provider.id}) — {len(test_cases)} tests ({len(dynamic_canaries)} canary)"
         )
         passed = 0
         failed = 0
