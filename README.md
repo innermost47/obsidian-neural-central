@@ -160,6 +160,122 @@ verification_samples   (reference fingerprint bank)
 
 ---
 
+### Security
+
+#### General
+
+- **FFmpeg validation**: every WAV received from a provider is validated (format, duration 1-60s, max size 50MB) before being sent to the client
+- **Immediate ban** if invalid WAV is returned
+- **Proof-of-work verification**: periodic mel fingerprint comparison against an encrypted reference bank ensures providers run a genuine model
+- **Encrypted fingerprint bank**: reference fingerprints stored with a dedicated Fernet key (`SAMPLE_ENCRYPTION_KEY`) — independent of other keys, a leak of one does not compromise the others
+- **Per-provider API key**: auto-generated (`op_` + 48 random characters)
+- **Text LLM → fal.ai only**: never processed at providers to prevent prompt injection
+- **Public ownership records**: use `public_user_id` (UUID, never the internal ID), stored in DB
+- **Authenticated heartbeat**: provider identifies itself via API key
+
+#### Provider ↔ Central Server Communication Security
+
+**Unified `/process` endpoint** — All provider operations (health, status, generate) route through a single `POST /process` endpoint with an `action` field. This minimizes attack surface and simplifies validation.
+
+**Strict Pydantic schema validation**:
+
+| Endpoint                        | Request                                                | Response                                                                                                                  | Notes                                                |
+| ------------------------------- | ------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------- |
+| `POST /process?action=health`   | `{"action": "health"}`                                 | `ProviderHealthResponse` with `status="ok"`, `model_loaded`, `model`, `model_id`                                          | All fields mandatory, enum-validated                 |
+| `POST /process?action=status`   | `{"action": "status"}`                                 | `ProviderStatusResponse` with availability, API key (48-64 chars), model/device enums, VRAM                               | All fields mandatory, enum-validated                 |
+| `POST /process?action=generate` | `{"action": "generate", "prompt", "duration", "seed"}` | HTTP 200 with WAV body + headers: `X-Provider-Key`, `X-Model`, `X-Duration`, `X-Sample-Rate`, `X-Seed`, `X-Provider-Hash` | All headers validated via `ProviderGenerateResponse` |
+
+**Request validation**:
+
+- `action` is an enum: only `"health"`, `"status"`, `"generate"` accepted
+- `prompt` required only for `generate`, max length enforced
+- `duration` clamped to [2, 30] seconds
+- `seed` validated as 0 ≤ seed ≤ 2^31-1
+- Extra fields rejected via `extra="forbid"` — any unknown field causes immediate rejection and ban
+
+**Response validation (Pydantic models)**:
+
+```python
+class SupportedModel(str, Enum):
+    STABLE_AUDIO = "stable-audio-open-1.0"
+
+class SupportedModelId(str, Enum):
+    STABLE_AUDIO_ID = "stabilityai/stable-audio-open-1.0"
+
+class SupportedDevice(str, Enum):
+    CUDA = "cuda"
+
+class ProviderStatusResponse(BaseModel):
+    available: bool
+    api_key: str = Field(..., min_length=48, max_length=64)
+    model: SupportedModel  # Enum-validated: must be exact value
+    model_id: SupportedModelId  # Enum-validated: must be exact value
+    device: SupportedDevice  # Enum-validated: must be "cuda"
+    generating: bool
+    vram_total_gb: float = Field(..., ge=0, le=999999)
+    vram_used_gb: float = Field(..., ge=0, le=999999)
+    model_config = ConfigDict(protected_namespaces=(), extra="forbid")
+
+class ProviderGenerateResponse(BaseModel):
+    api_key: str = Field(..., min_length=48, max_length=64)
+    model: SupportedModel
+    duration: int = Field(..., ge=2, le=30)
+    sample_rate: int = Field(..., ge=44100, le=48000)
+    seed: int = Field(..., ge=0, le=2**31 - 1)
+    model_config = ConfigDict(protected_namespaces=(), extra="forbid")
+```
+
+- Any field missing, wrong type, or out of range → `ValidationError` → provider **auto-banned**
+- Extra fields in response → rejected → provider **auto-banned**
+- Enum mismatch (e.g., wrong model name) → provider **auto-banned**
+
+**Heartbeat endpoint** (`POST /providers/heartbeat`):
+
+- Accepts **ONLY** `True` as JSON body
+- Any other payload (object, array, string, etc.) → `400 Bad Request` + provider **auto-banned**
+- Returns bare `True`
+- No conversation, no info leakage
+
+**WebSocket connection** (`/providers/connect`):
+
+- Provider establishes connection with `X-Provider-Key` header (mandatory, validated)
+- Provider **sends nothing** except auto-ping frames (WebSocket protocol level)
+- If provider sends any application-level message → **immediate ban with reason "Unsolicited message on WebSocket"**
+- Server never sends messages to provider (only automatic ping/pong)
+- Provider listens only for connection lifecycle events
+- Connection stays alive via automatic WebSocket ping/pong (no application-level messages)
+
+**Code integrity verification** (`X-Provider-Hash` header):
+
+- Provider computes SHA256 hash of its own source code (whitespace/comments stripped) + API key hash + shared secret
+- Hash is included in all response headers: `X-Provider-Hash`
+- Central server verifies hash matches expected value for that provider
+- Hash mismatch → immediate ban with reason "Code integrity check failed"
+- Note: This is a deterrent to casual modifications, not cryptographically bulletproof, but combined with behavioural validation (determinism, seed verification) provides defense-in-depth
+
+**Content-Type validation**:
+
+- Generate response must have `Content-Type: audio/wav` or `application/octet-stream`
+- Invalid content-type → immediate ban with reason "Invalid content-type in response"
+
+**Automatic banning on any protocol violation**:
+
+- Invalid Pydantic schema → ban with "Invalid response headers format"
+- Missing required header → ban with "Missing [header] header"
+- Hash mismatch → ban with "Code integrity check failed on generate"
+- Invalid content-type → ban with "Invalid content-type in response"
+- Unsolicited WebSocket message → ban with "Unsolicited message on WebSocket"
+- Heartbeat payload != True → ban with "Invalid heartbeat payload"
+
+All bans trigger:
+
+1. Admin notification email with provider name, ID, and reason
+2. Provider notification email with remediation guidance and common causes
+3. Provider downgraded from "provider" tier to "free"
+4. Provider marked `is_banned = True` and `is_active = False`
+
+---
+
 ### Monthly Redistribution Eligibility
 
 A provider is eligible if:
@@ -190,29 +306,6 @@ Example with 180€ revenue and 6 eligible providers:
 The redistribution report is saved to the `finance_reports` table at each execution — full transparency.
 
 **Automatic redistribution runs via cron on the 1st of each month** — see Cron Tasks below.
-
----
-
-### Security
-
-- **FFmpeg validation**: every WAV received from a provider is validated (format, duration 1-60s, max size 50MB) before being sent to the client
-- **Immediate ban** if invalid WAV is returned
-- **Proof-of-work verification**: periodic mel fingerprint comparison against an encrypted reference bank ensures providers run a genuine model
-- **Encrypted fingerprint bank**: reference fingerprints stored with a dedicated Fernet key (`SAMPLE_ENCRYPTION_KEY`) — independent of other keys, a leak of one does not compromise the others
-- **Per-provider API key**: auto-generated (`op_` + 48 random characters)
-- **Text LLM → fal.ai only**: never processed at providers to prevent prompt injection
-- **Public ownership records**: use `public_user_id` (UUID, never the internal ID), stored in DB
-- **Authenticated heartbeat**: provider identifies itself via API key
-
----
-
-### Public Data Dashboard
-
-All network data — active subscribers, monthly redistribution history, and proof-of-generation logs — is published live at:
-
-**[obsidian-neural.com/public.html](https://obsidian-neural.com/public.html)**
-
-No authentication required. No data is ever deleted.
 
 ---
 
