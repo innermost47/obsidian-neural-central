@@ -26,10 +26,6 @@ from server.api.routes import (
     unsubscribe,
 )
 from server.services.provider_verification_service import ProviderVerificationService
-from server.services.integrity_service import (
-    initialize_provider_hash,
-    refresh_expected_provider_hash,
-)
 
 logger = logging.getLogger(__name__)
 
@@ -51,11 +47,17 @@ async def run_provider_verification_forever():
         logger.error(f"Provider verification loop crashed: {e}")
 
 
+async def run_provider_canary_tests():
+    try:
+        await ProviderVerificationService.randomly_test_providers()
+    except Exception as e:
+        logger.error(f"Canary tests loop crashed: {e}")
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     init_db()
     logger.info("✅ Database initialized")
-
     db = SessionLocal()
     try:
         db.query(Provider).update({Provider.is_online: False})
@@ -66,7 +68,6 @@ async def lifespan(app: FastAPI):
         db.rollback()
     finally:
         db.close()
-
     from server.services.integrity_service import (
         initialize_provider_hash,
         refresh_expected_provider_hash,
@@ -75,7 +76,6 @@ async def lifespan(app: FastAPI):
     await initialize_provider_hash()
     asyncio.create_task(refresh_expected_provider_hash())
     logger.info("✅ Provider integrity service started")
-
     provider_scheduler = None
     try:
         from apscheduler.schedulers.asyncio import AsyncIOScheduler
@@ -92,13 +92,13 @@ async def lifespan(app: FastAPI):
         )
         provider_scheduler.start()
         asyncio.create_task(run_provider_verification_forever())
+        asyncio.create_task(run_provider_canary_tests())
         logger.info("✅ Provider verification loop started (random interval 1h–5h)")
+        logger.info("✅ Provider canary tests started (random interval 1h–6h)")
         logger.info("✅ Provider ping scheduler started.")
     except Exception as e:
         logger.error(f"Failed to start provider ping scheduler: {e}")
-
     yield
-
     try:
         if provider_scheduler:
             provider_scheduler.shutdown()

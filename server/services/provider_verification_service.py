@@ -8,6 +8,7 @@ import httpx
 import librosa
 from pydantic import ValidationError
 import numpy as np
+from sqlalchemy import func
 from scipy.spatial.distance import cosine
 from sqlalchemy.orm import Session
 from server.config import settings
@@ -904,3 +905,174 @@ class ProviderVerificationService:
                     await ProviderVerificationService.run_verification_round(db)
                 except Exception as e:
                     logger.error(f"❌ Verification round error: {e}")
+
+    @staticmethod
+    async def randomly_test_providers():
+        from server.core.database import SessionLocal, Provider
+
+        while True:
+            try:
+                delay_seconds = random.randint(3600, 21600)
+                hours = delay_seconds // 3600
+                mins = (delay_seconds % 3600) // 60
+                logger.info(f"⏳ Next random provider test in {hours}h{mins:02d}m")
+                await asyncio.sleep(delay_seconds)
+                with SessionLocal() as db:
+                    total_providers = (
+                        db.query(Provider)
+                        .filter(Provider.is_active == True, Provider.is_banned == False)
+                        .count()
+                    )
+                    if total_providers == 0:
+                        logger.warning("⚠️  No active providers to test")
+                        continue
+                    num_providers = max(1, total_providers // 3)
+                    providers = (
+                        db.query(Provider)
+                        .filter(Provider.is_active == True, Provider.is_banned == False)
+                        .order_by(func.random())
+                        .limit(num_providers)
+                        .all()
+                    )
+                    if not providers:
+                        logger.warning("⚠️  No active providers to test")
+                        continue
+                    logger.info(
+                        f"🔍 Randomly testing {len(providers)}/{total_providers} providers"
+                    )
+                    for provider in providers:
+                        with SessionLocal() as db_test:
+                            await ProviderVerificationService.test_provider_error_handling(
+                                db_test, provider.id
+                            )
+                        inter_delay = random.randint(30, 300)
+                        await asyncio.sleep(inter_delay)
+            except Exception as e:
+                logger.error(f"❌ Provider random testing error: {e}")
+                await asyncio.sleep(600)
+
+    @staticmethod
+    async def test_provider_error_handling(db: Session, provider_id: int):
+        from server.core.database import Provider
+        from server.core.security import decrypt_server_key
+        from server.services.provider_service import ProviderService
+
+        provider = db.query(Provider).filter(Provider.id == provider_id).first()
+        if not provider or provider.is_banned:
+            return
+
+        delay_seconds = random.randint(0, 7200)
+        await asyncio.sleep(delay_seconds)
+
+        api_key = decrypt_server_key(provider.encoded_server_auth_key)
+        url = provider.url.rstrip("/")
+
+        test_cases = [
+            ("Invalid action 'invalid_action'", {"action": "invalid_action"}, 422),
+            ("Missing action field", {"prompt": "test"}, 422),
+            (
+                "Extra field 'extra_field'",
+                {"action": "health", "extra_field": "boom"},
+                422,
+            ),
+            (
+                "Duration too high (100s)",
+                {"action": "generate", "prompt": "test", "duration": 100, "seed": 42},
+                422,
+            ),
+            (
+                "Duration too low (1s)",
+                {"action": "generate", "prompt": "test", "duration": 1, "seed": 42},
+                422,
+            ),
+            (
+                "Empty prompt for generate",
+                {"action": "generate", "prompt": "", "duration": 10, "seed": 42},
+                422,
+            ),
+            (
+                "Missing prompt for generate",
+                {"action": "generate", "duration": 10, "seed": 42},
+                422,
+            ),
+            (
+                "Invalid seed type (string)",
+                {
+                    "action": "generate",
+                    "prompt": "test",
+                    "duration": 10,
+                    "seed": "not_a_number",
+                },
+                422,
+            ),
+            (
+                "Negative seed",
+                {"action": "generate", "prompt": "test", "duration": 10, "seed": -1},
+                422,
+            ),
+            (
+                "Seed too large (2^31)",
+                {"action": "generate", "prompt": "test", "duration": 10, "seed": 2**31},
+                422,
+            ),
+            ("Canary: action 'corrupt'", {"action": "corrupt"}, 422),
+            ("Canary: action 'test_integrity'", {"action": "test_integrity"}, 422),
+            ("Canary: action 'debug'", {"action": "debug"}, 422),
+            ("Canary: action 'admin'", {"action": "admin"}, 422),
+        ]
+
+        print(
+            f"\n🧪 Testing error handling for provider {provider.name} (ID: {provider.id})..."
+        )
+        passed = 0
+        failed = 0
+        canary_failed = False
+
+        async with httpx.AsyncClient(timeout=settings.PING_TIMEOUT) as client:
+            for test_name, payload, expected_status in test_cases:
+                try:
+                    response = await client.post(
+                        f"{url}/process",
+                        headers={
+                            **settings.BROWSER_HEADERS,
+                            "X-API-Key": api_key,
+                        },
+                        json=payload,
+                    )
+
+                    if response.status_code == expected_status:
+                        print(f"  ✅ {test_name}: HTTP {response.status_code}")
+                        passed += 1
+                    else:
+                        print(
+                            f"  ❌ {test_name}: expected {expected_status}, got {response.status_code}"
+                        )
+                        failed += 1
+
+                        if "Canary:" in test_name:
+                            print(
+                                f"  🚫 CANARY TEST FAILED - Code modification detected!"
+                            )
+                            canary_failed = True
+                            break
+
+                except Exception as e:
+                    print(f"  ❌ {test_name}: exception {e}")
+                    failed += 1
+
+                inter_test_delay = random.uniform(0.5, 3)
+                await asyncio.sleep(inter_test_delay)
+
+        if canary_failed:
+            await ProviderService._ban_provider(
+                db,
+                provider.id,
+                reason="Canary test failed: provider accepted invalid action (code modification detected)",
+            )
+            print(f"🚫 Provider {provider.name} has been BANNED")
+            return
+
+        print(f"✅ Error handling test complete: {passed}/{passed+failed} passed")
+
+        if failed > 0:
+            print(f"⚠️  {provider.name} failed {failed} test(s)")

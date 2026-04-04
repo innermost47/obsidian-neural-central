@@ -258,6 +258,21 @@ class ProviderGenerateResponse(BaseModel):
 - Generate response must have `Content-Type: audio/wav` or `application/octet-stream`
 - Invalid content-type → immediate ban with reason "Invalid content-type in response"
 
+**Canary testing** (`randomly_test_providers`):
+
+- Runs as a background task, independently of the verification loop
+- At random intervals (1h–6h), tests ~1/3 of active providers, chosen at random
+- Each provider is sent a battery of invalid requests designed to confirm the `/process` endpoint correctly rejects them with HTTP 422:
+  - Unknown `action` values: `"invalid_action"`, `"corrupt"`, `"debug"`, `"admin"`, `"test_integrity"`
+  - Missing required fields (e.g., no `action`, no `prompt` on generate)
+  - Extra fields (rejected by `extra="forbid"`)
+  - Out-of-range `duration` (too low, too high)
+  - Invalid `seed` (negative, above 2^31-1, wrong type)
+  - Empty `prompt` on generate
+- **Canary actions** (`"corrupt"`, `"debug"`, `"admin"`, `"test_integrity"`) are specifically designed to detect whitelist bypasses: if a provider accepts any of them (i.e., does not return 422), it signals that the action validation has been tampered with → provider is **immediately banned** with reason `"Canary test failed: provider accepted invalid action (code modification detected)"`
+- Inter-test delays are randomised (0.5s–3s per request, 0s–2h before the first test) to prevent timing fingerprinting
+- Each provider is tested in its own isolated DB session to avoid long-lived session state issues
+
 **Automatic banning on any protocol violation**:
 
 - Invalid Pydantic schema → ban with "Invalid response headers format"
@@ -266,6 +281,7 @@ class ProviderGenerateResponse(BaseModel):
 - Invalid content-type → ban with "Invalid content-type in response"
 - Unsolicited WebSocket message → ban with "Unsolicited message on WebSocket"
 - Heartbeat payload != True → ban with "Invalid heartbeat payload"
+- Canary action accepted → ban with "Canary test failed: provider accepted invalid action (code modification detected)"
 
 All bans trigger:
 
@@ -347,3 +363,7 @@ chmod +x /path/to/project/run_cron.sh
 | `refill_provider_credits` | 1st of month at 00:10 | Monthly credit refill for provider accounts                                                |
 | `cleanup_pings`           | 1st of month at 03:00 | **DB Cleanup**: Deletes ping logs older than 2 months (in 5k batches) to keep queries fast |
 | `redistribution`          | 1st of month at 06:00 | Fetches Stripe revenue → Computes prorated uptime → Executes Stripe transfers              |
+
+```
+
+```
