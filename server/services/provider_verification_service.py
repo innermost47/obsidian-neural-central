@@ -1060,11 +1060,17 @@ class ProviderVerificationService:
                         failed += 1
 
                         if "Canary:" in test_name:
-                            logger.warning(
-                                f"  🚫 CANARY FAILED — code modification detected on {provider.name}"
-                            )
-                            canary_failed = True
-                            break
+                            if response.status_code in (502, 503, 504, 500):
+                                logger.warning(
+                                    f"  ⚠️ CANARY INCONCLUSIVE — provider {provider.name} seems offline (HTTP {response.status_code}), skipping ban"
+                                )
+                                return
+                            else:
+                                logger.warning(
+                                    f"  🚫 CANARY FAILED — code modification detected on {provider.name}"
+                                )
+                                canary_failed = True
+                                break
 
                 except Exception as e:
                     logger.error(f"  ❌ {test_name}: exception {e}")
@@ -1073,7 +1079,7 @@ class ProviderVerificationService:
                 await asyncio.sleep(random.uniform(0.5, 3))
 
         if canary_failed:
-            await ProviderService._ban_provider(
+            ProviderService._ban_provider(
                 db,
                 provider.id,
                 reason="Canary test failed: provider accepted invalid action (code modification detected)",
