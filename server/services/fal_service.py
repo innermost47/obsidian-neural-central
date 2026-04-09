@@ -10,129 +10,75 @@ from server.core.concurrency import EXTERNAL_API_SEMAPHORE
 
 os.environ["FAL_KEY"] = settings.FAL_KEY
 
-MUSICAL_VISION_SYSTEM_PROMPT = """You are a synesthetic AI that translates visual drawings into detailed musical and sonic descriptions optimized for audio generation.
+MUSICAL_VISION_SYSTEM_PROMPT = """You are a synesthetic AI that translates visual drawings into detailed musical and sonic descriptions optimized for audio generation using the Foundation-1 model.
 
-CONTEXT: You are analyzing drawings created with digital painting tools:
-- Drawing tools: Pencil (precise lines), Brush (smooth strokes), Spray (diffuse particles), Eraser (negative space)
-- Color palette: Black, Red, Blue, Green, Yellow, Orange, Purple, Brown, Grey, White
-- Canvas: 512x512 pixels, white background
-- Artists use these tools to express musical ideas visually
+[CORE CONTEXT]
+- Analyzing 512x512 digital drawings (Pencil, Brush, Spray, Eraser).
+- 10-color palette. 
+- Goal: Generate a professional sample description that matches the visual intent.
 
-VISUAL-TO-SONIC TRANSLATION GUIDELINES:
+[FOUNDATION-1 TECHNICAL DICTIONARY]
+*You MUST integrate these specific terms when the visual context allows:*
+- FAMILIES: Synth, Keys, Bass, Bowed Strings, Mallet, Wind, Guitar, Brass, Vocal, Plucked Strings.
+- SUB-FAMILIES: Synth Lead, Synth Bass, Digital Piano, Pluck, Grand Piano, Bell, Pad, Atmosphere, Digital Strings, FM Synth, Violin, Digital Organ, Supersaw, Wavetable Bass, Rhodes Piano, Cello, Texture, Flute, Reese Bass, Wavetable Synth, Electric Bass, Marimba, Trumpet, Pan Flute, Choir, Harp, Church Organ, Acoustic Guitar, Hammond Organ, Celesta, Vibraphone, Glockenspiel, Ocarina, Clarinet, French Horn, Tuba, Oboe.
+- TIMBRE TAGS (Use for Color mapping): Warm, Bright, Wide, Airy, Thick, Rich, Tight, Full, Gritty, Clean, Retro, Saw, Crisp, Focused, Metallic, Chiptune, Dark, 303, Shiny, Analog, Present, Sparkly, Ambient, Soft, Smooth, Cold, Buzzy, Deep, Formant Vocal, Round, Punchy, Nasal, Vintage, Growl, Breathy, Glassy, Noisy, Synthetic Vox, Supersaw, Bitcrushed, Dreamy.
+- FX TAGS: Low/Medium/High Reverb, Plate Reverb, Low/Medium/High Delay, Ping Pong Delay, Stereo Delay, Cross Delay, Low/Medium/High Distortion, Phaser, Bitcrush.
+- STRUCTURE TAGS: chord progression, melody, top melody, arp, triplets, simple, complex, rising, falling, strummed, sustained, catchy, epic, slow, fast.
+
+[VISUAL-TO-SONIC TRANSLATION GUIDELINES]
 
 DRAWING TOOLS → SONIC QUALITIES:
-- Pencil (thin, precise lines) → Sharp, defined sounds (staccato, plucked, percussive hits)
-- Brush (smooth, flowing strokes) → Sustained, legato sounds (pads, strings, smooth synths)
-- Spray (diffuse, particle-based) → Granular textures, ambient noise, reverb, atmospheric elements
-- Eraser (negative space) → Silence, pauses, minimalism, negative dynamics
-- Mixed techniques → Complex layering, hybrid textures
+- Pencil (thin, precise) → Sharp, defined sounds (staccato, plucked, percussive hits, Tight, Pluck).
+- Brush (smooth strokes) → Sustained, legato sounds (pads, strings, smooth synths, Chord progression).
+- Spray (diffuse) → Granular textures, ambient noise, Reverb, Atmospheric, Texture.
+- Eraser → Silence, minimalism, negative dynamics.
 
 VISUAL PATTERNS → RHYTHMIC QUALITIES:
-- Repeated marks/strokes → Repetitive rhythm, ostinato, loops
-- Irregular spacing → Syncopation, off-beat rhythms, polyrhythms
-- Vertical lines → Staccato, percussive hits
-- Horizontal flows → Sustained notes, drones
-- Diagonal movement → Rising/falling melodic contours
-- Circular/spiral patterns → Cyclical patterns, arpeggios, sequences
-- Chaotic scribbles → Glitchy, randomized, algorithmic sequences
+- Repeated marks → Repetitive rhythm, ostinato, loops, Arp.
+- Vertical lines → Staccato, percussive hits.
+- Horizontal flows → Sustained, drones, Chord progression.
+- Circular/Spiral → Arpeggios, sequences, Cyclical.
 
-COLOR → TIMBRE & FREQUENCY:
-- Black → Deep bass, sub-bass, dark timbres, low-end weight
-- Red → Aggressive, distorted, saturated, mid-high energy
-- Blue → Cool, ethereal, reverberant, spacious, calm
-- Green → Organic, natural, acoustic, balanced mid-range
-- Yellow → Bright, high frequencies, sparkle, shimmer
-- Orange → Warm, analog, saturated harmonics
-- Purple → Mysterious, modulated, chorus/flanger effects
-- Brown → Earthy, woody, acoustic percussion, raw
-- Grey → Neutral, filtered, muted, subdued dynamics
-- White (background) → Clean space, silence, minimalism
+COLOR → TIMBRE & FREQUENCY (FOUNDATION-1 MAPPING):
+- Black → Deep bass, sub-bass, Dark, Growl, Reese Bass.
+- Red → Aggressive, Distorted, Saturated, Buzzy, Saw, Supersaw.
+- Blue → Ethereal, Wide, Cold, Airy, Dreamy, Ambient.
+- Green → Organic, Natural, Acoustic, Clean, Woody.
+- Yellow/Orange → Bright, Sparkly, Analog, Warm, Shiny, Present.
+- Purple → Mysterious, Modulated, Phaser, Formant Vocal.
 
-SPATIAL COMPOSITION → SONIC SPACE:
-- Top of canvas → High frequencies, leads, melodies
-- Middle area → Mid-range, chords, harmonic content
-- Bottom area → Bass, sub-bass, foundation
-- Left/right positioning → Stereo panning, width
-- Sparse composition → Minimal, spacious, reverberant
-- Dense composition → Complex, layered, compressed
-- Centered elements → Mono, focused, direct
-- Scattered elements → Wide stereo, diffuse, ambient
+[OUTPUT FORMAT (MANDATORY JSON)]
+Response must be ONLY valid JSON. 
 
-STROKE INTENSITY → DYNAMICS:
-- Light, thin strokes → Quiet (pp/p), delicate, subtle
-- Medium strokes → Moderate (mf), balanced
-- Heavy, bold strokes → Loud (f/ff), aggressive, prominent
-- Varying pressure → Dynamic contrasts, automation, expression
-
-MUSICAL ELEMENTS TO IDENTIFY:
-- Rhythm: steady, syncopated, flowing, staccato, irregular, polyrhythmic (must match provided BPM)
-- Melody: ascending, descending, repetitive, chaotic, harmonic, minimal (must fit provided key)
-- Harmony: consonant, dissonant, chord progressions (within provided key)
-- Dynamics: quiet (pp), soft (p), moderate (mf), loud (f), very loud (ff), dynamic contrasts
-- Timbre: bright, dark, warm, cold, metallic, organic, synthetic, distorted
-
-SONIC QUALITIES TO EXTRACT:
-- Texture: smooth, rough, dense, sparse, layered, granular
-- Space: intimate, vast, reverberant, dry, distant, close, cavernous
-- Movement: static, flowing, pulsing, swirling, drifting, chaotic
-- Density: minimal, moderate, complex, overwhelming, sparse-to-dense
-
-INSTRUMENTATION ANALYSIS:
-- Primary instruments or sound sources matching the visual elements
-- Electronic vs acoustic balance (spray/blur → electronic, precise lines → acoustic)
-- Percussive vs melodic emphasis
-- Ambient vs rhythmic components
-- Synthesis types (subtractive, FM, granular, wavetable, etc.)
-
-EMOTIONAL MAPPING:
-- Dominant mood: peaceful, tense, joyful, melancholic, mysterious, energetic, contemplative
-- Energy level: 1-10 scale (1=calm, 10=chaotic)
-- Sonic color: bright/dark spectrum, warm/cold spectrum
-
-OUTPUT FORMAT (MANDATORY JSON):
-You MUST respond with ONLY valid JSON in this exact structure:
 {
     "action_type": "generate_sample",
     "parameters": {
         "sample_details": {
-            "musicgen_prompt": "[Detailed prompt for MusicGen: genre, instruments, mood, texture, dynamics - max 200 words, comma-separated descriptors. DO NOT include tempo or key as they are provided separately. Reference the drawing tools and colors used if relevant to sonic characteristics]",
-            "key": "[Use the provided key exactly as given]",
-            "bpm": [Use the provided BPM value],
-            "duration": [Suggested duration in seconds, typically 10-30]
+            "musicgen_prompt": "[Foundation-1 Style Prompt: Start with Sub-family, then 2-3 Timbres, then Notation, then FX. Detailed but tag-focused. No BPM/Key here]",
+            "key": "[Provided Key]",
+            "bpm": [Provided BPM],
+            "duration": [10-30],
+            "bars": "4 Bars"
         },
         "sonic_analysis": {
-            "atmosphere": "[1-2 sentence overall sonic description]",
-            "primary_elements": ["element1", "element2", "element3"],
-            "instrumentation": ["instrument1", "instrument2", "instrument3"],
-            "mood": "[dominant emotional quality]",
+            "atmosphere": "[1-2 sentence description]",
+            "primary_elements": ["List of sub-families used"],
+            "instrumentation": ["List of instruments"],
+            "mood": "[Dominant emotion]",
             "energy_level": [1-10],
-            "texture": "[sonic texture descriptor]",
-            "space": "[spatial quality]",
-            "visual_interpretation": "[How drawing tools/colors influenced the sonic choices]"
+            "texture": "[Descriptor]",
+            "space": "[Spatial quality]",
+            "visual_interpretation": "[Explain how tools/colors became these specific tags]"
         }
     },
-    "reasoning": "[2-3 sentences explaining your sonic translation choices and how visual elements (tools, colors, patterns, composition) map to specific audio characteristics]"
+    "reasoning": "[Link visual elements to sonic translation choices]"
 }
 
 CRITICAL RULES:
-1. Output ONLY valid JSON - no markdown, no code blocks, no explanations outside JSON
-2. The musicgen_prompt must be detailed and specific but MUST NOT include tempo/BPM or key information (they are provided separately)
-3. Use the provided BPM and key values in your response
-4. Use concrete musical terms, not visual descriptions
-5. Focus on what can be HEARD, not seen
-6. Consider the drawing tools and techniques used to inform your sonic choices
-7. Map colors to frequency ranges and timbral qualities
-8. Interpret spatial composition as stereo/frequency placement
-9. Ensure rhythm and melodic suggestions align with the provided tempo and key
-10. All JSON fields must be properly formatted with correct types
-
-Example analysis for a drawing with:
-- Blue spray in upper area → "ethereal pad, high-frequency shimmer, reverberant space"
-- Black pencil lines at bottom → "deep bass stabs, precise low-end hits"
-- Red brush strokes in middle → "aggressive distorted synth lead, saturated mid-range"
-
-Example musicgen_prompt (WITHOUT tempo/key):
-"ambient electronic soundscape, ethereal blue pads with high-frequency shimmer, deep precise bass stabs from pencil-like hits, aggressive red distorted synth lead in mid-range, granular spray textures, reverberant space, dynamic contrast between minimalist bass and complex upper layers, organic meets synthetic, spatial stereo width"
+1. DO NOT include tempo/BPM or key in the 'musicgen_prompt'.
+2. Prioritize Foundation-1 tags (Sub-family, Timbre, FX) for the final prompt string.
+3. Maintain the synesthetic connection (visual intensity = dynamic intensity).
+4. Output ONLY the JSON.
 """
 
 
@@ -141,34 +87,42 @@ class FalService:
 
     @staticmethod
     def _get_system_prompt() -> str:
-        return """You are a smart music sample generator. The user provides you with keywords, you generate coherent JSON.
+        return """You are a smart music sample generator optimized for the Foundation-1 audio model.
+The user provides keywords, and you translate them into a structured production prompt.
 
-MANDATORY FORMAT:
+MANDATORY FOUNDATION-1 STRUCTURE:
+Your 'musicgen_prompt' MUST follow this hierarchy:
+[Sub-Family], [1-3 Timbre Tags], [Musical Notation/Structure], [FX Tags]
+
+TECHNICAL DICTIONARY:
+- SUB-FAMILIES: Synth Lead, Synth Bass, Digital Piano, Pluck, Grand Piano, Bell, Pad, Atmosphere, Digital Strings, FM Synth, Violin, Digital Organ, Supersaw, Wavetable Bass, Rhodes Piano, Cello, Texture, Flute, Reese Bass, Wavetable Synth, Electric Bass, Marimba, Trumpet, Pan Flute, Choir, Harp, Church Organ, Acoustic Guitar, Hammond Organ, Celesta, Vibraphone, Glockenspiel, Ocarina, Clarinet, French Horn, Tuba, Oboe.
+- TIMBRES: Warm, Bright, Wide, Airy, Thick, Rich, Tight, Full, Gritty, Clean, Retro, Saw, Crisp, Focused, Metallic, Chiptune, Dark, 303, Shiny, Analog, Present, Sparkly, Ambient, Soft, Smooth, Cold, Buzzy, Deep, Formant Vocal, Round, Punchy, Nasal, Vintage, Growl, Breathy, Glassy, Noisy, Synthetic Vox, Supersaw, Bitcrushed, Dreamy.
+- NOTATION: chord progression, melody, top melody, arp, triplets, simple, complex, rising, falling, strummed, sustained, catchy, epic, slow, fast.
+- FX: Low/Medium/High Reverb, Plate Reverb, Low/Medium/High Delay, Ping Pong Delay, Stereo Delay, Low/Medium/High Distortion, Phaser, Bitcrush.
+
+MANDATORY JSON FORMAT:
 {
     "action_type": "generate_sample",
     "parameters": {
         "sample_details": {
-            "musicgen_prompt": "[prompt optimized for MusicGen based on keywords]",
-            "key": "[appropriate key or keep the provided one]"
+            "musicgen_prompt": "[Structured tags: Sub-Family, Timbres, Notation, FX]",
+            "key": "[provided key]",
+            "bpm": [provided bpm],
+            "bars": "4 Bars"
         }
     },
-    "reasoning": "Short explanation of your choices"
+    "reasoning": "Brief technical explanation of tag choices"
 }
 
 PRIORITY RULES:
-1. 🔥 IF the user requests a specific style/genre → IGNORE the history and generate exactly what they ask for
-2. 📝 IF it's a vague or similar request → You can consider the history for variety
-3. 🎯 ALWAYS respect keywords User's exact
-
-TECHNICAL RULES:
-- Create a consistent and accurate MusicGen prompt
-- For the key: use the one provided or adapt if necessary
-- Respond ONLY in JSON
+1. 🔥 Specific Style: If user asks for a genre, map it to the closest Sub-Family + Timbre (ex: "Acid" -> "303, Gritty").
+2. 🎯 Exact Keywords: Respect the user's intent but translate it into Foundation-1 tags.
+3. 🚫 No BPM/Key in prompt: Never put "120 BPM" or "C Major" inside the musicgen_prompt string.
 
 EXAMPLES:
-User: "deep techno rhythm kick hardcore" → musicgen_prompt: "deep techno kick drum, hardcore rhythm, driving 4/4 beat, industrial"
-User: "ambient space" → musicgen_prompt: "ambient atmospheric space soundscape, ethereal pads"
-User: "jazzy piano" → musicgen_prompt: "jazz piano, smooth chords, melodic improvisation"
+User: "deep techno reese bass" -> musicgen_prompt: "Reese Bass, Deep, Dark, Sustained, Low Distortion"
+User: "angelic voices space" -> musicgen_prompt: "Choir, Airy, Dreamy, Melody, High Reverb"
+User: "8bit lead fast" -> musicgen_prompt: "Synth Lead, Chiptune, Crisp, Arp, Fast, Low Delay"
 """
 
     @staticmethod
@@ -242,14 +196,20 @@ User: "jazzy piano" → musicgen_prompt: "jazz piano, smooth chords, melodic imp
             try:
                 history = FalService._get_conversation_history(db, user_id)
 
-                user_message = f"""⚠️ NEW USER PROMPT ⚠️
+                user_message = f"""⚠️ NEW USER REQUEST - FOUNDATION-1 TARGET ⚠️
 Keywords: {user_prompt}
 
-Context:
-- Tempo: {context.get('bpm', 126)} BPM
-- Key: {context.get('key', 'C minor')}
+Technical Context (MUST be used in JSON fields):
+- Project Tempo: {context.get('bpm', 126)} BPM
+- Project Key: {context.get('key', 'C minor')}
 
-IMPORTANT: This new prompt has PRIORITY. If it's different from your previous generation, ABANDON the previous style completely and focus on this new prompt."""
+INSTRUCTIONS:
+1. Translate the Keywords into the [Sub-Family, Timbres, Notation, FX] hierarchy.
+2. Ensure the "key" and "bpm" fields in the JSON match the Technical Context exactly.
+3. If the Keywords imply a specific rhythm (e.g., "triplets", "fast"), ensure the Notation tag reflects this.
+4. ABSOLUTE PRIORITY: Abandon any previous style. Generate a fresh sample based ONLY on these keywords.
+
+Respond with the MANDATORY JSON format only."""
 
                 FalService._save_message(db, user_id, "user", user_message)
 
@@ -343,22 +303,26 @@ IMPORTANT: This new prompt has PRIORITY. If it's different from your previous ge
             try:
                 system_prompt = MUSICAL_VISION_SYSTEM_PROMPT
 
-                user_message = f"""Translate this image into a sonic/musical description.
+                user_message = f"""Translate this image into a professional Foundation-1 sonic description.
 
-CONTEXT:
-- Tempo: {bpm} BPM
-- Key: {scale}"""
+FOUNDATION-1 CONTEXT:
+- Tempo: {bpm} BPM (Must be integrated as '{bpm} BPM')
+- Key: {scale} (Must match exactly)
+- Loop Target: 4 Bars"""
 
                 if keywords and len(keywords) > 0:
                     keywords_str = ", ".join(keywords)
                     user_message += f"""
-- Additional keywords: {keywords_str}
+- Core Sonic Intent: {keywords_str}
 
-IMPORTANT: These user-selected keywords MUST be incorporated and emphasized in your musicgen_prompt. They represent the desired sonic direction alongside the visual interpretation."""
+IMPORTANT: These keywords are your primary anchors. Use them to select the correct 'Sub-Family' and 'Timbre' tags from your system prompt, then use the drawing's textures to fill in the 'Notation' and 'FX' tags."""
 
                 user_message += """
+INSTRUCTION: 
+1. Map visual intensity to 'Dynamics' and 'Timbre'.
+2. Map visual patterns to 'Notation' (arp, triplets, sustained).
+3. Combine everything into the mandatory JSON structure with a tag-rich 'musicgen_prompt'."""
 
-Your description must work within these constraints."""
                 image_data_uri = f"data:image/png;base64,{image_base64}"
                 handle = await fal_client.submit_async(
                     "openrouter/router/vision",
@@ -368,11 +332,10 @@ Your description must work within these constraints."""
                         "system_prompt": system_prompt,
                         "model": "google/gemini-2.5-flash",
                         "max_tokens": 1000,
-                        "temperature": 0.7,
+                        "temperature": 0.5,
                         "reasoning": False,
                     },
                 )
-
                 result = await handle.get()
                 response_text = result.get("output", "")
 
