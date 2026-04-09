@@ -1,6 +1,7 @@
 import hashlib
 import logging
 import re
+import time
 import asyncio
 from typing import Optional
 import httpx
@@ -50,8 +51,9 @@ def clean_code_for_hashing(text: str) -> bytes:
 async def _fetch_github_content() -> Optional[bytes]:
     try:
         async with httpx.AsyncClient(timeout=10.0) as client:
-            r = await client.get(PROVIDER_GITHUB_URL)
+            r = await client.get(f"{PROVIDER_GITHUB_URL}?t={int(time.time())}")
             if r.status_code == 200:
+                logger.info(f"✅ NEW GITHUB HASH FETCHED")
                 return clean_code_for_hashing(r.text)
     except Exception as e:
         logger.warning(f"⚠️  GitHub fetch error: {e}")
