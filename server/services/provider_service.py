@@ -265,7 +265,9 @@ class ProviderService:
             if p:
                 p.is_generating = True
                 db.commit()
-            print(f"🎵 Sending generation to provider: {provider['name']}")
+            print(
+                f"🎵 Sending generation to provider: {provider['name']} - Prompt: {prompt}"
+            )
             seed = random.randint(0, 2**31 - 1)
             async with httpx.AsyncClient(timeout=GENERATE_TIMEOUT) as client:
                 response = await client.post(
