@@ -194,10 +194,12 @@ class RetryEmailsRequest(BaseModel):
 
 class SupportedModel(str, Enum):
     STABLE_AUDIO = "stable-audio-open-1.0"
+    FOUNDATION_1 = "RoyalCities/Foundation-1"
 
 
 class SupportedModelId(str, Enum):
     STABLE_AUDIO_ID = "stabilityai/stable-audio-open-1.0"
+    FOUNDATION_1 = "RoyalCities/Foundation-1"
 
 
 class SupportedDevice(str, Enum):

@@ -1,5 +1,7 @@
 import hashlib
 import logging
+import re
+import time
 import asyncio
 from typing import Optional
 import httpx
@@ -41,16 +43,18 @@ def verify_provider_hash(
     return x_provider_hash == expected
 
 
+def clean_code_for_hashing(text: str) -> bytes:
+    cleaned = re.sub(r"\s+", "", text)
+    return cleaned.encode("utf-8")
+
+
 async def _fetch_github_content() -> Optional[bytes]:
     try:
         async with httpx.AsyncClient(timeout=10.0) as client:
-            r = await client.get(PROVIDER_GITHUB_URL)
+            r = await client.get(f"{PROVIDER_GITHUB_URL}?t={int(time.time())}")
             if r.status_code == 200:
-                content = r.content.replace(b"\r\n", b"\n").replace(b"\r", b"\n")
-                content = (
-                    content.replace(b" ", b"").replace(b"\n", b"").replace(b"\t", b"")
-                )
-                return content
+                logger.info(f"✅ NEW GITHUB HASH FETCHED")
+                return clean_code_for_hashing(r.text)
     except Exception as e:
         logger.warning(f"⚠️  GitHub fetch error: {e}")
     return None
