@@ -24,3 +24,4 @@ apscheduler
 psycopg2-binary
 python-dateutil
 google-analytics-data
+pyrubberband

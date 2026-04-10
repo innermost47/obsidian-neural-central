@@ -4,25 +4,25 @@ from sqlalchemy.orm import Session
 from server.api.models import GenerateRequest
 from server.api.dependencies import get_user_from_api_key
 from server.core.database import get_db, User
-from server.core.audio import applicate_lite_fade_in_fade_out
+from server.core.audio import (
+    applicate_lite_fade_in_fade_out,
+    stretch_audio_to_bpm,
+    fetch_audio_bytes,
+    audio_to_wav_bytes,
+    build_response_headers,
+    detect_bpm,
+    load_and_resample,
+)
 from server.services.fal_service import FalService
 from server.services.provider_service import ProviderService
 from server.services.credits_service import CreditsService
-import httpx
-import librosa
-import soundfile as sf
-import os
-import tempfile
 import re
 import base64
 import asyncio
 import random
-from concurrent.futures import ThreadPoolExecutor
-import numpy as np
+
 
 router = APIRouter(tags=["Generation"])
-
-executor = ThreadPoolExecutor(max_workers=4)
 
 
 def clean_base64(base64_string: str) -> str:
@@ -35,8 +35,57 @@ def clean_base64(base64_string: str) -> str:
     return cleaned
 
 
-def sanitize_header(value: str) -> str:
-    return value.encode("latin-1", errors="replace").decode("latin-1")
+async def _resolve_prompt(request, current_user, db) -> str:
+    context = {"bpm": request.bpm, "key": request.key}
+
+    if request.use_image and request.image_base64:
+        print("🎨 Image-to-audio mode")
+        cleaned_base64 = clean_base64(request.image_base64)
+        try:
+            image_bytes = base64.b64decode(cleaned_base64, validate=True)
+        except Exception:
+            image_bytes = base64.b64decode(cleaned_base64, validate=False)
+
+        if not image_bytes.startswith(b"\x89PNG"):
+            raise HTTPException(
+                status_code=400,
+                detail={
+                    "error": "INVALID_IMAGE",
+                    "message": "Image must be in PNG format",
+                },
+            )
+
+        if request.keywords:
+            print(f"🏷️  Keywords: {', '.join(request.keywords)}")
+
+        prompt = await FalService.analyze_drawing_with_vlm(
+            image_base64=cleaned_base64,
+            bpm=request.bpm,
+            scale=request.key,
+            user_id=current_user.id,
+            db=db,
+            keywords=request.keywords,
+        )
+        print(f"🎵 VLM prompt: {prompt}")
+        return prompt
+
+    elif request.use_image and not request.image_base64:
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "error": "INVALID_REQUEST",
+                "message": "use_image=true but no image_base64 provided",
+            },
+        )
+
+    else:
+        print("📝 Text-to-audio mode")
+        return await FalService.optimize_prompt_with_llm(
+            request.prompt,
+            context=context,
+            user_id=current_user.id,
+            db=db,
+        )
 
 
 @router.post("/generate")
@@ -46,10 +95,6 @@ async def generate_audio(
     db: Session = Depends(get_db),
 ):
     try:
-        temp_file = None
-        credits_needed = 1
-        remaining = 0
-        remaining_after = 0
         if not request.use_image and (
             not request.prompt or request.prompt.strip() == ""
         ):
@@ -60,6 +105,9 @@ async def generate_audio(
                     "message": "Prompt is required for text-to-audio generation",
                 },
             )
+
+        credits_needed = 1
+        remaining_after = 0
         if not current_user.is_admin:
             remaining = CreditsService.get_user_credits(db, current_user.id)
             if remaining < credits_needed:
@@ -71,63 +119,7 @@ async def generate_audio(
                     },
                 )
 
-        context = {"bpm": request.bpm, "key": request.key}
-
-        if request.use_image and request.image_base64:
-            print(f"🎨 Image-to-audio mode activated")
-
-            cleaned_base64 = clean_base64(request.image_base64)
-            print(f"✅ Cleaned base64 length: {len(cleaned_base64)} chars")
-
-            try:
-                image_bytes = base64.b64decode(cleaned_base64, validate=True)
-            except Exception as e:
-                print(f"⚠️  Standard decode failed: {e}, retrying...")
-                image_bytes = base64.b64decode(cleaned_base64, validate=False)
-
-            print(f"✅ Image decoded: {len(image_bytes)} bytes")
-
-            if not image_bytes.startswith(b"\x89PNG"):
-                raise HTTPException(
-                    status_code=400,
-                    detail={
-                        "error": "INVALID_IMAGE",
-                        "message": "Image must be in PNG format",
-                    },
-                )
-
-            print(f"🔍 Analyzing image with VLM (BPM={request.bpm}, Key={request.key})")
-
-            if request.keywords and len(request.keywords) > 0:
-                print(f"🏷️  User keywords: {', '.join(request.keywords)}")
-
-            final_prompt = await FalService.analyze_drawing_with_vlm(
-                image_base64=cleaned_base64,
-                bpm=request.bpm,
-                scale=request.key,
-                user_id=current_user.id,
-                db=db,
-                keywords=request.keywords,
-            )
-
-            print(f"🎵 VLM generated prompt: {final_prompt}")
-
-        elif request.use_image and not request.image_base64:
-            raise HTTPException(
-                status_code=400,
-                detail={
-                    "error": "INVALID_REQUEST",
-                    "message": "use_image=true but no image_base64 provided",
-                },
-            )
-        else:
-            print(f"📝 Text-to-audio mode")
-            final_prompt = await FalService.optimize_prompt_with_llm(
-                request.prompt,
-                context=context,
-                user_id=current_user.id,
-                db=db,
-            )
+        final_prompt = await _resolve_prompt(request, current_user, db)
 
         result = await ProviderService.generate_audio(
             prompt=final_prompt,
@@ -136,18 +128,8 @@ async def generate_audio(
             db=db,
             public_user_id=current_user.public_id,
         )
-
         if not result["success"]:
             raise HTTPException(status_code=500, detail=result["error"])
-
-        if "wav_bytes" in result:
-            audio_data = result["wav_bytes"]
-        else:
-            audio_url = result["audio_url"]
-            async with httpx.AsyncClient(timeout=60.0) as client:
-                response = await client.get(audio_url)
-                response.raise_for_status()
-                audio_data = response.content
 
         print(
             f"🎛️  Generation via: {result.get('provider_name', 'unknown')} "
@@ -157,84 +139,18 @@ async def generate_audio(
         target_sr = (
             int(request.sample_rate) if hasattr(request, "sample_rate") else 44100
         )
-
-        temp_file = tempfile.NamedTemporaryFile(delete=False, suffix=".wav")
-        temp_file.write(audio_data)
-        temp_file.close()
-
-        audio, sr_original = librosa.load(temp_file.name, sr=None, mono=False)
-
-        print(f"📊 Original sample rate: {sr_original}Hz, Target: {target_sr}Hz")
-        print(
-            f"🎵 Audio shape: {audio.shape} ({'stereo' if audio.ndim == 2 else 'mono'})"
-        )
-
-        if sr_original != target_sr:
-            print(f"🔄 Resampling from {sr_original}Hz to {target_sr}Hz...")
-            if audio.ndim == 2:
-                audio = np.array(
-                    [
-                        librosa.resample(
-                            audio[0], orig_sr=sr_original, target_sr=target_sr
-                        ),
-                        librosa.resample(
-                            audio[1], orig_sr=sr_original, target_sr=target_sr
-                        ),
-                    ]
-                )
-            else:
-                audio = librosa.resample(
-                    audio, orig_sr=sr_original, target_sr=target_sr
-                )
-            sr = target_sr
-        else:
-            print(f"✅ No resampling needed, already at {target_sr}Hz")
-            sr = sr_original
-
+        audio_data = await fetch_audio_bytes(result)
+        audio, sr = await load_and_resample(audio_data, target_sr)
         audio = applicate_lite_fade_in_fade_out(audio, sr)
-
-        loop = asyncio.get_event_loop()
-        if audio.ndim == 2:
-            audio_mono = librosa.to_mono(audio)
-            bpm_task = loop.run_in_executor(
-                executor, lambda: librosa.beat.beat_track(y=audio_mono, sr=sr)
-            )
-        else:
-            bpm_task = loop.run_in_executor(
-                executor, lambda: librosa.beat.beat_track(y=audio, sr=sr)
-            )
-
-        output_file = tempfile.NamedTemporaryFile(delete=False, suffix=".wav")
-        if audio.ndim == 2:
-            sf.write(output_file.name, audio.T, target_sr)
-        else:
-            sf.write(output_file.name, audio, target_sr)
-        output_file.close()
-
-        if audio.ndim == 2:
-            duration = audio.shape[1] / target_sr
-        else:
-            duration = len(audio) / target_sr
-
-        with open(output_file.name, "rb") as f:
-            wav_data = f.read()
-
-        detected_bpm = None
-        try:
-            tempo, _ = await bpm_task
-            detected_bpm = float(tempo)
-            print(
-                f"🎯 BPM détecté par librosa: {detected_bpm:.2f} BPM (attendu: {request.bpm} BPM)"
-            )
-        except Exception as e:
-            print(f"⚠️  Échec détection BPM: {e}")
+        detected_bpm = await detect_bpm(audio, sr)
+        audio = stretch_audio_to_bpm(audio, sr, detected_bpm, float(request.bpm))
+        wav_bytes, duration = audio_to_wav_bytes(audio, sr)
 
         generation_details = {
             "prompt": request.prompt,
             "bpm": request.bpm,
             "duration": request.generation_duration,
         }
-
         if not current_user.is_admin:
             CreditsService.consume_credits(
                 db,
@@ -253,27 +169,22 @@ async def generate_audio(
                 commit=True,
             )
 
-        os.remove(temp_file.name)
-        os.remove(output_file.name)
-
-        headers = {
-            "X-Duration": str(duration),
-            "X-BPM": str(request.bpm),
-            "X-Detected-BPM": str(detected_bpm) if detected_bpm else "",
-            "X-Key": sanitize_header(str(request.key or "")),
-            "X-Credits-Remaining": str(remaining_after),
-            "X-Credits-Used": str(credits_needed),
-            "X-Sample-Rate": str(target_sr),
-            "X-Provider": sanitize_header(result.get("provider_name", "unknown")),
-            "X-Used-Fallback": str(result.get("used_fallback", False)),
-        }
-
-        print(f"✅ Audio generated: {duration:.1f}s @ {target_sr}Hz")
+        print(f"✅ Audio généré: {duration:.1f}s @ {target_sr}Hz")
 
         return Response(
-            content=wav_data,
+            content=wav_bytes,
             media_type="audio/wav",
-            headers=headers,
+            headers=build_response_headers(
+                duration=duration,
+                request_bpm=request.bpm,
+                detected_bpm=detected_bpm,
+                key=request.key,
+                remaining_after=remaining_after,
+                credits_needed=credits_needed,
+                target_sr=target_sr,
+                provider_name=result.get("provider_name", "unknown"),
+                used_fallback=result.get("used_fallback", False),
+            ),
         )
 
     except HTTPException:
@@ -287,12 +198,6 @@ async def generate_audio(
                 "message": f"Audio generation failed: {str(e)}",
             },
         )
-    finally:
-        if temp_file and os.path.exists(temp_file.name):
-            try:
-                os.remove(temp_file.name)
-            except:
-                pass
 
 
 @router.post("/generate/test")
