@@ -23,6 +23,8 @@ from server.core.database import (
     ProviderVerification,
     OwnershipLog,
     FinanceReport,
+    ProviderSemanticWarning,
+    ProviderDailyStats,
 )
 
 config = context.config

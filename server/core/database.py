@@ -261,6 +261,9 @@ class Provider(Base):
     pings = relationship("ProviderPing", back_populates="provider")
     user = relationship("User", back_populates="provider", foreign_keys=[user_id])
     verifications = relationship("ProviderVerification", back_populates="provider")
+    semantic_warnings = relationship(
+        "ProviderSemanticWarning", back_populates="provider"
+    )
 
     def __repr__(self):
         return f"<Provider {self.name} ({'banned' if self.is_banned else 'active' if self.is_active else 'inactive'})>"
@@ -378,7 +381,7 @@ class FinanceReport(Base):
     __tablename__ = "finance_reports"
 
     id = Column(Integer, primary_key=True, index=True)
-    month = Column(String(7), nullable=False, unique=True, index=True)  # "2026-03"
+    month = Column(String(7), nullable=False, unique=True, index=True)
     total_revenue_eur = Column(Float, nullable=False)
     platform_fee_pct = Column(Float, nullable=False)
     platform_fee_eur = Column(Float, nullable=False)
@@ -419,6 +422,24 @@ class ProviderDailyStats(Base):
     __table_args__ = (
         UniqueConstraint("provider_id", "date", name="_provider_date_uc"),
     )
+
+
+class ProviderSemanticWarning(Base):
+    __tablename__ = "provider_semantic_warnings"
+    id = Column(Integer, primary_key=True)
+    provider_id = Column(
+        Integer,
+        ForeignKey("providers.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    user_message = Column(Text, nullable=False)
+    llm_response = Column(Text, nullable=False)
+    similarity_score = Column(Float, nullable=False)
+    threshold = Column(Float, nullable=False)
+    created_at = Column(DateTime, default=func.now())
+
+    provider = relationship("Provider", back_populates="semantic_warnings")
 
 
 def get_db():

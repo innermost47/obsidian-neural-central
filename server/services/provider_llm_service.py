@@ -173,8 +173,23 @@ class ProviderLLMService:
                 sim = _cosine_similarity(nomic_user, nomic_response)
                 if sim < COSINE_SIMILARITY_THRESHOLD:
                     print(
-                        f"⚠️ [semantic] Low similarity: {sim:.4f} < {COSINE_SIMILARITY_THRESHOLD} — warning"
+                        f"⚠️ [semantic] Low similarity: {sim:.4f} < {COSINE_SIMILARITY_THRESHOLD} — warning only, no ban"
                     )
+                    try:
+                        from server.core.database import ProviderSemanticWarning
+
+                        warning = ProviderSemanticWarning(
+                            provider_id=provider["id"],
+                            user_message=user_message[:2000],
+                            llm_response=llm_response.response[:2000],
+                            similarity_score=round(sim, 6),
+                            threshold=COSINE_SIMILARITY_THRESHOLD,
+                        )
+                        db.add(warning)
+                        db.commit()
+                    except Exception as db_err:
+                        print(f"⚠️ [semantic] Failed to save warning: {db_err}")
+                        db.rollback()
                 else:
                     print(f"✅ [semantic] similarity: {sim:.4f}")
             except Exception as e:
