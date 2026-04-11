@@ -1,5 +1,4 @@
 import httpx
-import asyncio
 import hashlib
 import math
 from datetime import datetime, timezone
@@ -9,7 +8,7 @@ from sqlalchemy.orm import Session
 from server.services.fal_service import FalService
 from server.core.database import Provider
 from server.config import settings
-from server.core.security import decrypt_server_key
+from server.services.provider_service import ProviderService
 import ollama
 
 LLM_INFER_TIMEOUT = 120.0
@@ -122,108 +121,7 @@ async def _verify_response_embedding(
 
 class ProviderLLMService:
 
-    @staticmethod
-    def _ban_provider(db: Session, provider_id: int, reason: str):
-        provider = db.query(Provider).filter(Provider.id == provider_id).first()
-        if provider:
-            provider.is_banned = True
-            provider.is_active = False
-            provider.ban_reason = reason
-            if provider.user_id:
-                from server.core.database import User
-
-                user = db.query(User).filter(User.id == provider.user_id).first()
-                if user and user.subscription_tier == "provider":
-                    user.subscription_tier = "free"
-                    user.subscription_status = "inactive"
-            db.commit()
-            print(f"🚫 Provider {provider.name} BANNED: {reason}")
-
-            from server.services.admin_notification_service import (
-                AdminNotificationService,
-            )
-
-            AdminNotificationService.notify_provider_banned(
-                provider.name, provider_id, reason
-            )
-
-    @staticmethod
-    async def _ping_provider(url: str, encoded_server_auth_key: str) -> Optional[Dict]:
-        try:
-            async with httpx.AsyncClient(timeout=PING_TIMEOUT) as client:
-                response = await client.post(
-                    f"{url.rstrip('/')}/process",
-                    headers={
-                        **settings.BROWSER_HEADERS,
-                        "X-API-Key": decrypt_server_key(encoded_server_auth_key),
-                    },
-                    json={"action": "status"},
-                )
-                if response.status_code == 200:
-                    data = response.json()
-                    if (
-                        not data.get("generating", False)
-                        and not data.get("generating_llm", False)
-                        and not data.get("generating_image", False)
-                    ):
-                        return data
-        except Exception:
-            pass
-        return None
-
-    @staticmethod
-    async def _find_available_provider(db: Session) -> Optional[Dict]:
-        providers = (
-            db.query(Provider)
-            .filter(
-                Provider.is_active == True,
-                Provider.is_banned == False,
-                Provider.is_disposable == True,
-                Provider.activation_token_used == True,
-            )
-            .all()
-        )
-
-        if not providers:
-            print("📭 No active providers for LLM")
-            return None
-
-        import random
-
-        random.shuffle(providers)
-        print(f"🔍 Pinging {len(providers)} provider(s) for LLM...")
-
-        ping_tasks = [
-            ProviderLLMService._ping_provider(p.url, p.encoded_server_auth_key)
-            for p in providers
-        ]
-        results = await asyncio.gather(*ping_tasks, return_exceptions=True)
-
-        for provider, result in zip(providers, results):
-            if isinstance(result, Exception) or not result:
-                continue
-
-            returned_key = result.get("api_key", "")
-            key_hash = hashlib.sha256(returned_key.encode()).hexdigest()
-            if key_hash != provider.api_key:
-                print(f"⚠️ {provider.name} — invalid API key in status")
-                ProviderLLMService._ban_provider(
-                    db, provider.id, "Invalid API key returned in status response"
-                )
-                continue
-
-            provider.last_ping = datetime.now(timezone.utc)
-            db.commit()
-            print(f"✅ LLM provider available: {provider.name}")
-            return {
-                "id": provider.id,
-                "name": provider.name,
-                "url": provider.url,
-                "server_api_key": decrypt_server_key(provider.encoded_server_auth_key),
-            }
-
-        print("📭 No LLM provider available right now")
-        return None
+    _ban_provider = ProviderService._ban_provider
 
     @staticmethod
     async def _infer_at_provider(
@@ -350,7 +248,7 @@ class ProviderLLMService:
         db: Session,
     ) -> Dict[str, Any]:
 
-        provider = await ProviderLLMService._find_available_provider(db)
+        provider = await ProviderService._find_available_provider(db)
 
         if provider:
             result = await ProviderLLMService._infer_at_provider(

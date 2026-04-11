@@ -99,6 +99,8 @@ class ProviderService:
                 Provider.is_banned == False,
                 Provider.is_disposable == True,
                 Provider.activation_token_used == True,
+                Provider.is_generating == False,
+                Provider.is_generating_llm == False,
             )
             .all()
         )

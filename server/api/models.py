@@ -215,7 +215,7 @@ class ProviderStatusResponse(BaseModel):
     generating: bool
     vram_total_gb: float = Field(..., ge=0, le=999999)
     vram_used_gb: float = Field(..., ge=0, le=999999)
-
+    generating_llm: bool
     model_config = ConfigDict(protected_namespaces=(), extra="forbid")
 
 
