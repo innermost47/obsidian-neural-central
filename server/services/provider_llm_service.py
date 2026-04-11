@@ -13,7 +13,7 @@ import ollama
 
 LLM_INFER_TIMEOUT = 120.0
 PING_TIMEOUT = 5.0
-COSINE_SIMILARITY_THRESHOLD = 0.75
+COSINE_SIMILARITY_THRESHOLD = 0.60
 
 
 class LLMConversationMessage(BaseModel):
@@ -171,16 +171,12 @@ class ProviderLLMService:
                 nomic_user = await _get_nomic_embedding(user_message)
                 nomic_response = await _get_nomic_embedding(llm_response.response)
                 sim = _cosine_similarity(nomic_user, nomic_response)
-                print(
-                    f"{'✅' if sim >= COSINE_SIMILARITY_THRESHOLD else '❌'} [semantic] similarity: {sim:.4f}"
-                )
                 if sim < COSINE_SIMILARITY_THRESHOLD:
-                    ProviderLLMService._ban_provider(
-                        db,
-                        provider["id"],
-                        f"Semantic similarity too low: {sim:.4f} < {COSINE_SIMILARITY_THRESHOLD}",
+                    print(
+                        f"⚠️ [semantic] Low similarity: {sim:.4f} < {COSINE_SIMILARITY_THRESHOLD} — warning"
                     )
-                    return None
+                else:
+                    print(f"✅ [semantic] similarity: {sim:.4f}")
             except Exception as e:
                 print(f"⚠️ [semantic] nomic check failed (skipping): {e}")
             if db_provider:
