@@ -24,9 +24,11 @@ class LLMConversationMessage(BaseModel):
 
 class ProviderLLMResponse(BaseModel):
     model_config = ConfigDict(extra="forbid")
+    system_prompt: str
+    history: list[LLMConversationMessage]
+    user_message: str
     response: str
     model: str
-    embeddings: Dict[str, list[float]]
     provider_key: str
 
 
@@ -82,41 +84,6 @@ async def _get_nomic_embedding(text: str) -> list[float]:
         prompt=text,
     )
     return response.embedding
-
-
-async def _verify_response_embedding(
-    user_message: str,
-    response_text: str,
-    response_embedding: list[float],
-) -> tuple[bool, str]:
-
-    if not response_embedding:
-        print("❌ [embedding] Empty response_embedding")
-        return False, "Empty response_embedding"
-    print(f"✅ [embedding] response_embedding present ({len(response_embedding)}d)")
-
-    unique_vals = len(set(round(x, 6) for x in response_embedding[:50]))
-    if unique_vals < 5:
-        print("❌ [embedding] Constant/zero embedding — likely faked")
-        return False, "Constant or zero embedding — likely faked"
-    print(f"✅ [embedding] Embedding variance OK")
-
-    try:
-        nomic_user = await _get_nomic_embedding(user_message)
-        nomic_response = await _get_nomic_embedding(response_text)
-        sim = _cosine_similarity(nomic_user, nomic_response)
-        print(
-            f"{'✅' if sim >= COSINE_SIMILARITY_THRESHOLD else '❌'} [embedding] nomic user↔response similarity: {sim:.4f} (threshold: {COSINE_SIMILARITY_THRESHOLD})"
-        )
-        if sim < COSINE_SIMILARITY_THRESHOLD:
-            return (
-                False,
-                f"Semantic similarity too low: {sim:.4f} < {COSINE_SIMILARITY_THRESHOLD}",
-            )
-    except Exception as e:
-        print(f"⚠️ [embedding] nomic check failed (skipping): {e}")
-
-    return True, "ok"
 
 
 class ProviderLLMService:
@@ -200,18 +167,22 @@ class ProviderLLMService:
                     db, provider["id"], f"Echo mismatch: {reason}"
                 )
                 return None
-
-            is_valid, reason = await _verify_response_embedding(
-                user_message,
-                llm_response.response,
-                llm_response.response_embedding,
-            )
-            if not is_valid:
-                ProviderLLMService._ban_provider(
-                    db, provider["id"], f"Embedding verification failed: {reason}"
+            try:
+                nomic_user = await _get_nomic_embedding(user_message)
+                nomic_response = await _get_nomic_embedding(llm_response.response)
+                sim = _cosine_similarity(nomic_user, nomic_response)
+                print(
+                    f"{'✅' if sim >= COSINE_SIMILARITY_THRESHOLD else '❌'} [semantic] similarity: {sim:.4f}"
                 )
-                return None
-
+                if sim < COSINE_SIMILARITY_THRESHOLD:
+                    ProviderLLMService._ban_provider(
+                        db,
+                        provider["id"],
+                        f"Semantic similarity too low: {sim:.4f} < {COSINE_SIMILARITY_THRESHOLD}",
+                    )
+                    return None
+            except Exception as e:
+                print(f"⚠️ [semantic] nomic check failed (skipping): {e}")
             if db_provider:
                 db_provider.llm_jobs_done += 1
                 db_provider.last_seen = datetime.now(timezone.utc)
