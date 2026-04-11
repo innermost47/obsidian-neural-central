@@ -114,49 +114,6 @@ class ProviderVerificationService:
                             ban_db.close()
                         return None
 
-                    provider_hash = response.headers.get("x-provider-hash", "")
-                    if not provider_hash:
-                        logger.warning(
-                            f"🚫 {provider_url} — missing X-Provider-Hash: BAN"
-                        )
-                        from server.services.provider_service import ProviderService
-                        from server.core.database import SessionLocal
-
-                        ban_db = SessionLocal()
-                        try:
-                            ProviderService._ban_provider(
-                                ban_db, provider_id, "Missing X-Provider-Hash header"
-                            )
-                            ban_db.commit()
-                        finally:
-                            ban_db.close()
-                        return None
-
-                    from server.services.integrity_service import verify_provider_hash
-
-                    if not verify_provider_hash(
-                        provider_hash,
-                        provider_api_key_hash,
-                        encoded_server_auth_key,
-                    ):
-                        logger.warning(
-                            f"🚫 {provider_url} — code integrity check failed: BAN"
-                        )
-                        from server.services.provider_service import ProviderService
-                        from server.core.database import SessionLocal
-
-                        ban_db = SessionLocal()
-                        try:
-                            ProviderService._ban_provider(
-                                ban_db,
-                                provider_id,
-                                "Code integrity check failed on verify",
-                            )
-                            ban_db.commit()
-                        finally:
-                            ban_db.close()
-                        return None
-
                     if gen_response.seed != seed:
                         logger.warning(f"🚫 {provider_url} — seed mismatch: BAN")
                         from server.services.provider_service import ProviderService

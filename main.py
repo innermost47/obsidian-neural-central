@@ -68,14 +68,6 @@ async def lifespan(app: FastAPI):
         db.rollback()
     finally:
         db.close()
-    from server.services.integrity_service import (
-        initialize_provider_hash,
-        refresh_expected_provider_hash,
-    )
-
-    await initialize_provider_hash()
-    asyncio.create_task(refresh_expected_provider_hash())
-    logger.info("✅ Provider integrity service started")
     provider_scheduler = None
     try:
         from apscheduler.schedulers.asyncio import AsyncIOScheduler

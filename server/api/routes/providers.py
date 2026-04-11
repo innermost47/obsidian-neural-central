@@ -18,7 +18,6 @@ from server.api.dependencies import get_verified_user
 from server.config import settings
 from server.core.websocket_manager import manager
 from server.services.provider_service import ProviderService
-from server.services.integrity_service import verify_provider_hash
 from server.api.models import ActivateRequest
 
 router = APIRouter(prefix="/providers", tags=["Providers"])
@@ -152,7 +151,6 @@ def get_my_provider_stats(
 async def provider_heartbeat(
     request: Request,
     x_api_key: str = Header(...),
-    x_provider_hash: str = Header(...),
     db: Session = Depends(get_db),
 ):
     try:
@@ -176,17 +174,6 @@ async def provider_heartbeat(
 
     if not provider:
         raise HTTPException(status_code=401, detail="Invalid API key")
-
-    if not verify_provider_hash(
-        x_provider_hash,
-        provider.api_key,
-        provider.encoded_server_auth_key,
-    ):
-        print(f"⚠️  {provider.name} — code hash mismatch on heartbeat")
-        ProviderService._ban_provider(
-            db, provider.id, "Code integrity check failed on heartbeat"
-        )
-        raise HTTPException(status_code=403, detail="Code integrity check failed")
 
     provider.last_seen = datetime.now(timezone.utc).replace(tzinfo=None)
     db.commit()
@@ -213,19 +200,6 @@ async def websocket_endpoint(
 
     if not provider:
         await websocket.close(code=4001)
-        return
-
-    x_provider_hash = websocket.headers.get("x-provider-hash", "")
-    if not verify_provider_hash(
-        x_provider_hash,
-        provider.api_key,
-        provider.encoded_server_auth_key,
-    ):
-        print(f"⚠️  {provider.name} — code hash mismatch on connect, rejecting")
-        ProviderService._ban_provider(
-            db, provider.id, "Code integrity check failed on connect"
-        )
-        await websocket.close(code=1008)
         return
 
     await manager.connect(websocket, provider.id)

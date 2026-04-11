@@ -8,7 +8,6 @@ from pydantic import ValidationError
 from sqlalchemy.orm import Session
 from server.config import settings
 from server.core.security import decrypt_server_key
-from server.services.integrity_service import verify_provider_hash
 from server.api.models import ProviderStatusResponse
 from server.services.provider_service import ProviderService
 
@@ -86,26 +85,10 @@ class ProviderPingService:
                         try:
                             data = response.json()
                             status_response = ProviderStatusResponse(**data)
-
                             returned_key = status_response.api_key
                             key_hash = hashlib.sha256(returned_key.encode()).hexdigest()
                             if key_hash == provider.api_key:
                                 responded = True
-                            else:
-                                provider_hash = response.headers.get(
-                                    "x-provider-hash", ""
-                                )
-                                if not verify_provider_hash(
-                                    provider_hash,
-                                    provider.api_key,
-                                    provider.encoded_server_auth_key,
-                                ):
-                                    print(
-                                        f"⚠️ {provider.name} — code integrity check failed on ping"
-                                    )
-                                    responded = False
-                                else:
-                                    responded = True
                         except ValidationError as e:
                             print(f"🚫 {provider.name} — invalid response format: {e}")
                             ProviderService._ban_provider(

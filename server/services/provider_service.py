@@ -17,7 +17,6 @@ from server.services.credits_service import CreditsService
 from server.core.database import Provider, ProviderJob, OwnershipLog
 from server.config import settings
 from server.core.security import encrypt_server_key, decrypt_server_key
-from server.services.integrity_service import verify_provider_hash
 from server.api.models import ProviderStatusResponse, ProviderGenerateResponse
 
 PING_TIMEOUT = 5.0
@@ -81,11 +80,7 @@ class ProviderService:
                     try:
                         data = response.json()
                         status_response = ProviderStatusResponse(**data)
-
                         result = status_response.model_dump()
-                        result["_provider_hash"] = response.headers.get(
-                            "x-provider-hash", ""
-                        )
                         return result
                     except ValidationError:
                         return None
@@ -133,15 +128,6 @@ class ProviderService:
                 print(f"⚠️ {provider.name} — invalid API key in status response")
                 ProviderService._ban_provider(
                     db, provider.id, "Invalid API key returned in status response"
-                )
-                continue
-            provider_hash = result.get("_provider_hash", "")
-            if not verify_provider_hash(
-                provider_hash, provider.api_key, provider.encoded_server_auth_key
-            ):
-                print(f"⚠️ {provider.name} — code integrity check failed")
-                ProviderService._ban_provider(
-                    db, provider.id, "Code integrity check failed on ping"
                 )
                 continue
 
@@ -316,32 +302,11 @@ class ProviderService:
                     )
                     return None
 
-                provider_hash = response.headers.get("x-provider-hash", "")
-                if not provider_hash:
-                    print(
-                        f"🚫 Provider {provider['name']} — missing X-Provider-Hash: BAN"
-                    )
-                    ProviderService._ban_provider(
-                        db, provider["id"], "Missing X-Provider-Hash header"
-                    )
-                    return None
-
                 key_hash = hashlib.sha256(gen_response.api_key.encode()).hexdigest()
                 if key_hash != db_provider.api_key:
                     print(f"🚫 {provider['name']} — invalid key in response: BAN")
                     ProviderService._ban_provider(
                         db, provider["id"], "Invalid API key in response"
-                    )
-                    return None
-
-                if not verify_provider_hash(
-                    provider_hash,
-                    db_provider.api_key,
-                    db_provider.encoded_server_auth_key,
-                ):
-                    print(f"🚫 {provider['name']} — code integrity check failed: BAN")
-                    ProviderService._ban_provider(
-                        db, provider["id"], "Code integrity check failed on generate"
                     )
                     return None
 
