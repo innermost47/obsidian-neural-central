@@ -10,6 +10,7 @@ from server.services.fal_service import FalService
 from server.core.database import Provider
 from server.config import settings
 from server.core.security import decrypt_server_key
+import ollama
 
 LLM_INFER_TIMEOUT = 120.0
 PING_TIMEOUT = 5.0
@@ -39,29 +40,82 @@ def _cosine_similarity(a: list[float], b: list[float]) -> float:
     return dot / (na * nb)
 
 
-def _verify_embeddings(
-    embeddings: Dict[str, list[float]],
+def _verify_echo(
+    sent_system_prompt: str,
+    sent_history: list[LLMConversationMessage],
+    sent_user_message: str,
+    received: ProviderLLMResponse,
 ) -> tuple[bool, str]:
 
-    for key in ("system", "user", "response"):
-        if key not in embeddings:
-            return False, f"Missing embedding key: '{key}'"
+    if received.system_prompt != sent_system_prompt:
+        print(f"❌ [echo] system_prompt mismatch")
+        return False, "system_prompt echo mismatch"
+    print(f"✅ [echo] system_prompt OK")
 
-    dims = {k: len(v) for k, v in embeddings.items()}
-    unique_dims = set(dims.values())
-    if len(unique_dims) > 1:
-        return False, f"Inconsistent embedding dimensions: {dims}"
+    if received.user_message != sent_user_message:
+        print(f"❌ [echo] user_message mismatch")
+        return False, "user_message echo mismatch"
+    print(f"✅ [echo] user_message OK")
 
-    sim = _cosine_similarity(embeddings["user"], embeddings["response"])
-    if sim < COSINE_SIMILARITY_THRESHOLD:
-        return False, (
-            f"Semantic similarity too low between user_message and response: "
-            f"{sim:.4f} < {COSINE_SIMILARITY_THRESHOLD}"
+    if len(received.history) != len(sent_history):
+        print(
+            f"❌ [echo] history length mismatch: sent {len(sent_history)}, got {len(received.history)}"
         )
+        return (
+            False,
+            f"history length mismatch: sent {len(sent_history)}, got {len(received.history)}",
+        )
+    print(f"✅ [echo] history length OK ({len(sent_history)} messages)")
 
-    sim_sys_user = _cosine_similarity(embeddings["system"], embeddings["user"])
-    if sim_sys_user > 0.999:
-        return False, "system and user embeddings are identical — likely faked"
+    for i, (sent, received_msg) in enumerate(zip(sent_history, received.history)):
+        if sent.role != received_msg.role or sent.content != received_msg.content:
+            print(f"❌ [echo] history[{i}] mismatch")
+            return False, f"history message {i} mismatch"
+    print(f"✅ [echo] history content OK")
+
+    return True, "ok"
+
+
+async def _get_nomic_embedding(text: str) -> list[float]:
+    client = ollama.AsyncClient()
+    response = await client.embeddings(
+        model="nomic-embed-text",
+        prompt=text,
+    )
+    return response.embedding
+
+
+async def _verify_response_embedding(
+    user_message: str,
+    response_text: str,
+    response_embedding: list[float],
+) -> tuple[bool, str]:
+
+    if not response_embedding:
+        print("❌ [embedding] Empty response_embedding")
+        return False, "Empty response_embedding"
+    print(f"✅ [embedding] response_embedding present ({len(response_embedding)}d)")
+
+    unique_vals = len(set(round(x, 6) for x in response_embedding[:50]))
+    if unique_vals < 5:
+        print("❌ [embedding] Constant/zero embedding — likely faked")
+        return False, "Constant or zero embedding — likely faked"
+    print(f"✅ [embedding] Embedding variance OK")
+
+    try:
+        nomic_user = await _get_nomic_embedding(user_message)
+        nomic_response = await _get_nomic_embedding(response_text)
+        sim = _cosine_similarity(nomic_user, nomic_response)
+        print(
+            f"{'✅' if sim >= COSINE_SIMILARITY_THRESHOLD else '❌'} [embedding] nomic user↔response similarity: {sim:.4f} (threshold: {COSINE_SIMILARITY_THRESHOLD})"
+        )
+        if sim < COSINE_SIMILARITY_THRESHOLD:
+            return (
+                False,
+                f"Semantic similarity too low: {sim:.4f} < {COSINE_SIMILARITY_THRESHOLD}",
+            )
+    except Exception as e:
+        print(f"⚠️ [embedding] nomic check failed (skipping): {e}")
 
     return True, "ok"
 
@@ -240,13 +294,21 @@ class ProviderLLMService:
                 )
                 return None
 
-            is_valid, reason = _verify_embeddings(
-                llm_response.embeddings,
+            is_valid, reason = _verify_echo(
+                system_prompt, history, user_message, llm_response
             )
             if not is_valid:
-                print(
-                    f"🚫 {provider['name']} — embedding verification failed: {reason}: BAN"
+                ProviderLLMService._ban_provider(
+                    db, provider["id"], f"Echo mismatch: {reason}"
                 )
+                return None
+
+            is_valid, reason = await _verify_response_embedding(
+                user_message,
+                llm_response.response,
+                llm_response.response_embedding,
+            )
+            if not is_valid:
                 ProviderLLMService._ban_provider(
                     db, provider["id"], f"Embedding verification failed: {reason}"
                 )
