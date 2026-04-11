@@ -251,6 +251,10 @@ class Provider(Base):
     activation_token_used = Column(Boolean, default=False, nullable=False)
     activation_token_expires_at = Column(DateTime, nullable=True)
     encoded_api_key = Column(String(500), nullable=True)
+    is_generating_llm = Column(Boolean, default=False, nullable=False)
+    is_generating_image = Column(Boolean, default=False, nullable=False)
+    llm_jobs_done = Column(Integer, default=0)
+    llm_jobs_failed = Column(Integer, default=0)
     user_id = Column(
         Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True
     )

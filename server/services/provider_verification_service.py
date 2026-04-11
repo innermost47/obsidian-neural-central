@@ -978,6 +978,84 @@ class ProviderVerificationService:
                 {"action": "generate", "prompt": "test", "duration": 10, "seed": 2**31},
                 422,
             ),
+            (
+                "llm_infer missing system_prompt",
+                {"action": "llm_infer", "user_message": "test"},
+                422,
+            ),
+            (
+                "llm_infer missing user_message",
+                {"action": "llm_infer", "system_prompt": "test"},
+                422,
+            ),
+            (
+                "llm_infer empty user_message",
+                {"action": "llm_infer", "system_prompt": "test", "user_message": ""},
+                422,
+            ),
+            (
+                "llm_infer empty system_prompt",
+                {"action": "llm_infer", "system_prompt": "", "user_message": "test"},
+                422,
+            ),
+            (
+                "llm_infer extra field",
+                {
+                    "action": "llm_infer",
+                    "system_prompt": "test",
+                    "user_message": "test",
+                    "extra": "boom",
+                },
+                422,
+            ),
+            (
+                "llm_infer invalid role in history",
+                {
+                    "action": "llm_infer",
+                    "system_prompt": "test",
+                    "user_message": "test",
+                    "history": [{"role": "hacker", "content": "pwned"}],
+                },
+                422,
+            ),
+            (
+                "llm_infer empty content in history",
+                {
+                    "action": "llm_infer",
+                    "system_prompt": "test",
+                    "user_message": "test",
+                    "history": [{"role": "user", "content": ""}],
+                },
+                422,
+            ),
+            (
+                "llm_infer invalid base64 image",
+                {
+                    "action": "llm_infer",
+                    "system_prompt": "test",
+                    "user_message": "test",
+                    "image_base64": "not_valid_base64!!!",
+                },
+                422,
+            ),
+            (
+                "llm_infer system_prompt too long",
+                {
+                    "action": "llm_infer",
+                    "system_prompt": "x" * 33000,
+                    "user_message": "test",
+                },
+                422,
+            ),
+            (
+                "llm_infer user_message too long",
+                {
+                    "action": "llm_infer",
+                    "system_prompt": "test",
+                    "user_message": "x" * 9000,
+                },
+                422,
+            ),
         ]
 
         dynamic_canaries = [

@@ -16,10 +16,16 @@ from server.core.audio import (
 from server.services.fal_service import FalService
 from server.services.provider_service import ProviderService
 from server.services.credits_service import CreditsService
+from server.services.provider_llm_service import (
+    ProviderLLMService,
+    LLMConversationMessage,
+)
+from server.prompts import MUSICAL_VISION_SYSTEM_PROMPT, get_system_prompt
 import re
 import base64
 import asyncio
 import random
+import json
 
 
 router = APIRouter(tags=["Generation"])
@@ -45,7 +51,6 @@ async def _resolve_prompt(request, current_user, db) -> str:
             image_bytes = base64.b64decode(cleaned_base64, validate=True)
         except Exception:
             image_bytes = base64.b64decode(cleaned_base64, validate=False)
-
         if not image_bytes.startswith(b"\x89PNG"):
             raise HTTPException(
                 status_code=400,
@@ -54,9 +59,59 @@ async def _resolve_prompt(request, current_user, db) -> str:
                     "message": "Image must be in PNG format",
                 },
             )
-
         if request.keywords:
             print(f"🏷️  Keywords: {', '.join(request.keywords)}")
+
+        user_message = f"""Translate this image into a sonic/musical description.
+
+CONTEXT:
+- Tempo: {request.bpm} BPM
+- Key: {request.key}"""
+
+        if request.keywords:
+            keywords_str = ", ".join(request.keywords)
+            user_message += f"""
+- Additional keywords: {keywords_str}
+
+IMPORTANT: These user-selected keywords MUST be incorporated and emphasized in your musicgen_prompt."""
+
+        user_message += "\n\nYour description must work within these constraints."
+
+        result = await ProviderLLMService.infer(
+            system_prompt=MUSICAL_VISION_SYSTEM_PROMPT,
+            history=[],
+            user_message=user_message,
+            image_base64=cleaned_base64,
+            db=db,
+        )
+
+        if result["success"]:
+            response_text = result["response"].strip()
+            if response_text.startswith("```json"):
+                response_text = response_text.split("```json")[1].split("```")[0]
+            try:
+                sonic_json = json.loads(response_text)
+                base_prompt = sonic_json["parameters"]["sample_details"][
+                    "musicgen_prompt"
+                ]
+                prompt = f"{request.bpm} BPM {base_prompt} {request.key}"
+                print(f"🎵 VLM prompt via {result['provider_name']}: {prompt}")
+                FalService._save_message(
+                    db,
+                    current_user.id,
+                    "user",
+                    f"[Drawing analysis] BPM: {request.bpm}, Key: {request.key}",
+                )
+                FalService._save_message(
+                    db, current_user.id, "assistant", result["response"]
+                )
+                return prompt
+            except (json.JSONDecodeError, KeyError):
+                print(
+                    "⚠️ JSON parse error on provider response, falling back to fal.ai..."
+                )
+        else:
+            print("⚠️ ProviderLLMService failed, falling back to fal.ai...")
 
         prompt = await FalService.analyze_drawing_with_vlm(
             image_base64=cleaned_base64,
@@ -66,7 +121,7 @@ async def _resolve_prompt(request, current_user, db) -> str:
             db=db,
             keywords=request.keywords,
         )
-        print(f"🎵 VLM prompt: {prompt}")
+        print(f"🎵 VLM prompt via fal.ai fallback: {prompt}")
         return prompt
 
     elif request.use_image and not request.image_base64:
@@ -80,6 +135,55 @@ async def _resolve_prompt(request, current_user, db) -> str:
 
     else:
         print("📝 Text-to-audio mode")
+
+        history = FalService._get_conversation_history(db, current_user.id)
+        llm_messages = [
+            LLMConversationMessage(role=m["role"], content=m["content"])
+            for m in history
+            if m["role"] != "system"
+        ]
+
+        user_message = f"""⚠️ NEW USER PROMPT ⚠️
+Keywords: {request.prompt}
+
+Context:
+- Tempo: {context.get('bpm', 126)} BPM
+- Key: {context.get('key', 'C minor')}
+
+IMPORTANT: This new prompt has PRIORITY. If it's different from your previous generation, ABANDON the previous style completely and focus on this new prompt."""
+
+        result = await ProviderLLMService.infer(
+            system_prompt=get_system_prompt(),
+            history=llm_messages,
+            user_message=user_message,
+            image_base64=None,
+            db=db,
+        )
+
+        if result["success"]:
+            try:
+                json_match = re.search(r"({.*})", result["response"], re.DOTALL)
+                if json_match:
+                    decision = json.loads(json_match.group(1))
+                    optimized_prompt = (
+                        decision.get("parameters", {})
+                        .get("sample_details", {})
+                        .get("musicgen_prompt", request.prompt)
+                    )
+                    FalService._save_message(db, current_user.id, "user", user_message)
+                    FalService._save_message(
+                        db, current_user.id, "assistant", result["response"]
+                    )
+                    prompt = f"{request.bpm} BPM {optimized_prompt} {request.key}"
+                    print(f"🎵 LLM prompt via {result['provider_name']}: {prompt}")
+                    return prompt
+            except (json.JSONDecodeError, KeyError):
+                print(
+                    "⚠️ JSON parse error on provider response, falling back to fal.ai..."
+                )
+        else:
+            print("⚠️ ProviderLLMService failed, falling back to fal.ai...")
+
         return await FalService.optimize_prompt_with_llm(
             request.prompt,
             context=context,
