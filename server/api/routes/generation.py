@@ -41,6 +41,18 @@ def clean_base64(base64_string: str) -> str:
     return cleaned
 
 
+def _extract_json(text: str) -> str:
+    text = text.strip()
+    if "```json" in text:
+        text = text.split("```json")[1].split("```")[0]
+    elif "```" in text:
+        text = text.split("```")[1].split("```")[0]
+    match = re.search(r"(\{.*\})", text, re.DOTALL)
+    if match:
+        return match.group(1)
+    return text.strip()
+
+
 async def _resolve_prompt(request, current_user, db) -> str:
     context = {"bpm": request.bpm, "key": request.key}
 
@@ -86,9 +98,7 @@ IMPORTANT: These user-selected keywords MUST be incorporated and emphasized in y
         )
 
         if result["success"]:
-            response_text = result["response"].strip()
-            if response_text.startswith("```json"):
-                response_text = response_text.split("```json")[1].split("```")[0]
+            response_text = _extract_json(result["response"])
             try:
                 sonic_json = json.loads(response_text)
                 base_prompt = sonic_json["parameters"]["sample_details"][
@@ -162,25 +172,22 @@ IMPORTANT: This new prompt has PRIORITY. If it's different from your previous ge
 
         if result["success"]:
             try:
-                json_match = re.search(r"({.*})", result["response"], re.DOTALL)
-                if json_match:
-                    decision = json.loads(json_match.group(1))
-                    optimized_prompt = (
-                        decision.get("parameters", {})
-                        .get("sample_details", {})
-                        .get("musicgen_prompt", request.prompt)
-                    )
-                    FalService._save_message(db, current_user.id, "user", user_message)
-                    FalService._save_message(
-                        db, current_user.id, "assistant", result["response"]
-                    )
-                    prompt = f"{request.bpm} BPM {optimized_prompt} {request.key}"
-                    print(f"🎵 LLM prompt via {result['provider_name']}: {prompt}")
-                    return prompt
-            except (json.JSONDecodeError, KeyError):
-                print(
-                    "⚠️ JSON parse error on provider response, falling back to fal.ai..."
+                response_text = _extract_json(result["response"])
+                decision = json.loads(response_text)
+                optimized_prompt = (
+                    decision.get("parameters", {})
+                    .get("sample_details", {})
+                    .get("musicgen_prompt", request.prompt)
                 )
+                FalService._save_message(db, current_user.id, "user", user_message)
+                FalService._save_message(
+                    db, current_user.id, "assistant", result["response"]
+                )
+                prompt = f"{request.bpm} BPM {optimized_prompt} {request.key}"
+                print(f"🎵 LLM prompt via {result['provider_name']}: {prompt}")
+                return prompt
+            except (json.JSONDecodeError, KeyError) as e:
+                print(f"⚠️ JSON parse error: {e} — raw: {result['response'][:500]}")
         else:
             print("⚠️ ProviderLLMService failed, falling back to fal.ai...")
 
