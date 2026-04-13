@@ -288,6 +288,15 @@ async def generate_audio(
         )
         audio_data = await fetch_audio_bytes(result)
         audio, sr = await load_and_resample(audio_data, target_sr)
+
+        target_samples = int(round(float(request.generation_duration) * sr))
+        if audio.ndim == 2:
+            if audio.shape[1] > target_samples:
+                audio = audio[:, :target_samples]
+        else:
+            if len(audio) > target_samples:
+                audio = audio[:target_samples]
+
         audio = applicate_lite_fade_in_fade_out(audio, sr)
 
         if resolved["model"] == "stable-audio-open-1.0":

@@ -63,15 +63,13 @@ def stretch_audio_to_bpm(
     threshold: float = 0.01,
 ) -> np.ndarray:
     if detected_bpm <= 0 or target_bpm <= 0:
-        print("⚠️  BPM invalide, pas de stretch")
+        print("⚠️ Invalid BPM, no stretch")
         return audio
 
     stretch_ratio = detected_bpm / target_bpm
 
     if abs(stretch_ratio - 1.0) <= threshold:
-        print(
-            f"✅ BPM déjà correct ({detected_bpm:.1f} → {target_bpm}), pas de stretch"
-        )
+        print(f"✅ BPM already correct ({detected_bpm:.1f} → {target_bpm}), no stretch")
         return audio
 
     print(
@@ -86,7 +84,7 @@ def stretch_audio_to_bpm(
         else:
             return pyrb.time_stretch(audio, sr, stretch_ratio)
     except Exception as e:
-        print(f"⚠️  Time-stretch échoué, audio inchangé: {e}")
+        print(f"⚠️ Time-stretch failed, audio unchanged: {e}")
         return audio
 
 
@@ -98,7 +96,7 @@ async def load_and_resample(
         tmp.write(audio_data)
         tmp.close()
         audio, sr_original = librosa.load(tmp.name, sr=None, mono=False)
-        print(f"📊 Sample rate original: {sr_original}Hz, cible: {target_sr}Hz")
+        print(f"📊 Sample rate original: {sr_original}Hz, target: {target_sr}Hz")
         print(f"🎵 Shape: {audio.shape} ({'stereo' if audio.ndim == 2 else 'mono'})")
 
         if sr_original != target_sr:
@@ -119,7 +117,7 @@ async def load_and_resample(
                     audio, orig_sr=sr_original, target_sr=target_sr
                 )
         else:
-            print(f"✅ Pas de resampling nécessaire")
+            print(f"✅ No resampling required")
 
         return audio, target_sr
     finally:
@@ -135,10 +133,10 @@ async def detect_bpm(audio: np.ndarray, sr: int) -> float | None:
             executor, lambda: librosa.beat.beat_track(y=audio_mono, sr=sr)
         )
         detected = float(tempo)
-        print(f"🎯 BPM détecté: {detected:.2f}")
+        print(f"🎯 BPM detected: {detected:.2f}")
         return detected
     except Exception as e:
-        print(f"⚠️  Échec détection BPM: {e}")
+        print(f"⚠️ BPM detection failed: {e}")
         return None
 
 
