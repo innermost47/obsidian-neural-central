@@ -293,14 +293,6 @@ async def generate_audio(
         audio_data = await fetch_audio_bytes(result)
         audio, sr = await load_and_resample(audio_data, target_sr)
 
-        target_samples = int(round(float(request.generation_duration) * sr))
-        if audio.ndim == 2:
-            if audio.shape[1] > target_samples:
-                audio = audio[:, :target_samples]
-        else:
-            if len(audio) > target_samples:
-                audio = audio[:target_samples]
-
         audio = applicate_lite_fade_in_fade_out(audio, sr)
 
         loop = asyncio.get_event_loop()
@@ -333,6 +325,14 @@ async def generate_audio(
                 audio = stretch_audio_to_bpm(
                     audio, sr, float(snapped_bpm), float(resolved["bpm"])
                 )
+
+        target_samples = int(round(float(request.generation_duration) * sr))
+        if audio.ndim == 2:
+            if audio.shape[1] > target_samples:
+                audio = audio[:, :target_samples]
+        else:
+            if len(audio) > target_samples:
+                audio = audio[:target_samples]
 
         wav_bytes, duration = audio_to_wav_bytes(audio, sr)
 
