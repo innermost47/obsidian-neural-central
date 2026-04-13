@@ -235,10 +235,9 @@ class ProviderHealthResponse(BaseModel):
 class ProviderGenerateResponse(BaseModel):
     api_key: str = Field(..., min_length=48, max_length=64)
     model: SupportedModel
-    duration: int = Field(..., ge=2, le=30)
-    sample_rate: int = Field(..., ge=44100, le=48000)
+    duration: int = Field(default=0, ge=0, le=30)
+    sample_rate: int = Field(default=0, ge=0, le=48000)
     seed: int = Field(..., ge=0, le=2**31 - 1)
-
     model_config = ConfigDict(protected_namespaces=(), extra="forbid")
 
 
