@@ -5,7 +5,6 @@ import os
 import tempfile
 import numpy as np
 import asyncio
-import pyrubberband as pyrb
 from concurrent.futures import ThreadPoolExecutor
 
 
@@ -58,11 +57,11 @@ def applicate_lite_fade_in_fade_out(audio, sr):
 def stretch_audio_to_bpm(
     audio: np.ndarray,
     sr: int,
-    detected_bpm: float,
+    detected_bpm: float | None,
     target_bpm: float,
     threshold: float = 0.01,
 ) -> np.ndarray:
-    if detected_bpm <= 0 or target_bpm <= 0:
+    if not detected_bpm or detected_bpm <= 0 or target_bpm <= 0:
         print("⚠️ Invalid BPM, no stretch")
         return audio
 
@@ -78,11 +77,11 @@ def stretch_audio_to_bpm(
 
     try:
         if audio.ndim == 2:
-            left = pyrb.time_stretch(audio[0], sr, stretch_ratio)
-            right = pyrb.time_stretch(audio[1], sr, stretch_ratio)
+            left = librosa.effects.time_stretch(audio[0], rate=stretch_ratio)
+            right = librosa.effects.time_stretch(audio[1], rate=stretch_ratio)
             return np.array([left, right])
         else:
-            return pyrb.time_stretch(audio, sr, stretch_ratio)
+            return librosa.effects.time_stretch(audio, rate=stretch_ratio)
     except Exception as e:
         print(f"⚠️ Time-stretch failed, audio unchanged: {e}")
         return audio
