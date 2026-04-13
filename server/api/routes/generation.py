@@ -1,16 +1,15 @@
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import Response
 from sqlalchemy.orm import Session
+import numpy as np
 from server.api.models import GenerateRequest
 from server.api.dependencies import get_user_from_api_key
 from server.core.database import get_db, User
 from server.core.audio import (
     applicate_lite_fade_in_fade_out,
-    stretch_audio_to_bpm,
     fetch_audio_bytes,
     audio_to_wav_bytes,
     build_response_headers,
-    detect_bpm,
     load_and_resample,
 )
 from server.services.fal_service import FalService
@@ -292,19 +291,13 @@ async def generate_audio(
         )
         audio_data = await fetch_audio_bytes(result)
         audio, sr = await load_and_resample(audio_data, target_sr)
-
         audio = applicate_lite_fade_in_fade_out(audio, sr)
 
         loop = asyncio.get_event_loop()
-        if audio.ndim == 2:
-            audio_mono = librosa.to_mono(audio)
-            bpm_task = loop.run_in_executor(
-                executor, lambda: librosa.beat.beat_track(y=audio_mono, sr=sr)
-            )
-        else:
-            bpm_task = loop.run_in_executor(
-                executor, lambda: librosa.beat.beat_track(y=audio, sr=sr)
-            )
+        audio_mono = librosa.to_mono(audio) if audio.ndim == 2 else audio
+        bpm_task = loop.run_in_executor(
+            executor, lambda: librosa.beat.beat_track(y=audio_mono, sr=sr)
+        )
 
         detected_bpm = None
         try:
@@ -315,24 +308,42 @@ async def generate_audio(
             print(f"⚠️ BPM detection failed: {e}")
 
         if resolved["model"] == "stable-audio-open-1.0":
-            audio = stretch_audio_to_bpm(
-                audio, sr, detected_bpm, float(resolved["bpm"])
-            )
+            if detected_bpm:
+                stretch_ratio = detected_bpm / float(resolved["bpm"])
+                if abs(stretch_ratio - 1.0) > 0.01:
+                    print(
+                        f"🔧 Stretch: {detected_bpm:.1f} → {resolved['bpm']} BPM (ratio {stretch_ratio:.4f})"
+                    )
+                    if audio.ndim == 2:
+                        audio = np.array(
+                            [
+                                librosa.effects.time_stretch(
+                                    audio[0], rate=stretch_ratio
+                                ),
+                                librosa.effects.time_stretch(
+                                    audio[1], rate=stretch_ratio
+                                ),
+                            ]
+                        )
+                    else:
+                        audio = librosa.effects.time_stretch(audio, rate=stretch_ratio)
         else:
             snapped_bpm = result.get("snapped_bpm")
             detected_bpm = float(snapped_bpm) if snapped_bpm else detected_bpm
             if snapped_bpm and int(snapped_bpm) != int(resolved["bpm"]):
-                audio = stretch_audio_to_bpm(
-                    audio, sr, float(snapped_bpm), float(resolved["bpm"])
+                stretch_ratio = float(snapped_bpm) / float(resolved["bpm"])
+                print(
+                    f"🔧 Foundation-1 stretch: {snapped_bpm} → {resolved['bpm']} BPM (ratio {stretch_ratio:.4f})"
                 )
-
-        target_samples = int(round(float(request.generation_duration) * sr))
-        if audio.ndim == 2:
-            if audio.shape[1] > target_samples:
-                audio = audio[:, :target_samples]
-        else:
-            if len(audio) > target_samples:
-                audio = audio[:target_samples]
+                if audio.ndim == 2:
+                    audio = np.array(
+                        [
+                            librosa.effects.time_stretch(audio[0], rate=stretch_ratio),
+                            librosa.effects.time_stretch(audio[1], rate=stretch_ratio),
+                        ]
+                    )
+                else:
+                    audio = librosa.effects.time_stretch(audio, rate=stretch_ratio)
 
         wav_bytes, duration = audio_to_wav_bytes(audio, sr)
 
@@ -361,7 +372,9 @@ async def generate_audio(
                 commit=True,
             )
 
-        print(f"✅ Audio généré: {duration:.1f}s @ {target_sr}Hz [{resolved['model']}]")
+        print(
+            f"✅ Audio generated: {duration:.1f}s @ {target_sr}Hz [{resolved['model']}]"
+        )
 
         return Response(
             content=wav_bytes,
