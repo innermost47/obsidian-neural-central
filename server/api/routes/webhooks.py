@@ -33,35 +33,25 @@ async def handle_stripe_webhook(request: Request):
 
     if event["type"] == "checkout.session.completed":
         session = event["data"]["object"]
-
         if session.get("metadata", {}).get("type") == "gift_subscription":
             handle_gift_checkout_completed(session)
         else:
             handle_successful_checkout(session)
 
     elif event["type"] == "invoice.payment_succeeded":
-        invoice = event["data"]["object"]
-        handle_successful_payment(invoice)
+        handle_successful_payment(event["data"]["object"])
 
     elif event["type"] == "invoice.payment_failed":
-        invoice = event["data"]["object"]
-        handle_payment_failed(invoice)
+        handle_payment_failed(event["data"]["object"])
 
     elif event["type"] == "customer.subscription.updated":
-        subscription = event["data"]["object"]
-        handle_subscription_updated(subscription)
+        handle_subscription_updated(event["data"]["object"])
 
     elif event["type"] == "customer.subscription.deleted":
-        subscription = event["data"]["object"]
-        handle_subscription_canceled(subscription)
-
-    elif event["type"] == "customer.subscription.trial_will_end":
-        subscription = event["data"]["object"]
-        handle_trial_will_end(subscription)
+        handle_subscription_canceled(event["data"]["object"])
 
     elif event["type"] == "customer.subscription.created":
-        subscription = event["data"]["object"]
-        handle_subscription_created(subscription)
+        handle_subscription_created(event["data"]["object"])
 
     return {"status": "success"}
 
@@ -161,16 +151,12 @@ def handle_successful_payment(invoice):
 
         if user:
             if hasattr(user, "pending_tier") and user.pending_tier:
-                print(f"Applying pending tier change: {user.pending_tier}")
-
                 old_tier = user.subscription_tier
                 new_tier = user.pending_tier
-
-                user.subscription_tier = user.pending_tier
+                user.subscription_tier = new_tier
                 user.pending_tier = None
                 user.subscription_status = "active"
                 CreditsService.refill_credits(db, user.id, user.subscription_tier)
-
                 AdminNotificationService.notify_new_subscription(
                     email=user.email,
                     user_id=user.id,
@@ -178,23 +164,7 @@ def handle_successful_payment(invoice):
                     amount=f"Upgrade from {old_tier} to {new_tier}",
                 )
                 ProviderNotificationService.notify_new_subscriber(db, tier=new_tier)
-            elif user.subscription_status == "trialing":
-                print(f"✅ Trial converted to paid: {user.email}")
 
-                user.subscription_status = "active"
-
-                CreditsService.refill_credits(db, user.id, user.subscription_tier)
-
-                EmailService.send_trial_converted(
-                    email=user.email, tier=user.subscription_tier, db=db
-                )
-
-                AdminNotificationService.notify_trial_converted(
-                    email=user.email, user_id=user.id, tier=user.subscription_tier
-                )
-                ProviderNotificationService.notify_trial_converted(
-                    db, tier=user.subscription_tier
-                )
             elif user.subscription_tier not in ["none", "free"]:
                 user.subscription_status = "active"
                 CreditsService.refill_credits(db, user.id, user.subscription_tier)
@@ -298,35 +268,18 @@ def handle_subscription_canceled(subscription):
         )
 
         if user:
-            was_trial = user.subscription_status == "trialing"
-
-            if was_trial:
-                EmailService.send_trial_not_converted(email=user.email, db=db)
-
-                AdminNotificationService.notify_trial_not_converted(
-                    email=user.email, user_id=user.id, tier=user.subscription_tier
-                )
-
-                print(
-                    f"❌ Trial not converted: {user.email} - {user.subscription_tier}"
-                )
-            else:
-                EmailService.send_subscription_cancelled(email=user.email, db=db)
-
-                AdminNotificationService.notify_subscription_cancelled(
-                    email=user.email, user_id=user.id, tier=user.subscription_tier
-                )
-                ProviderNotificationService.notify_subscription_cancelled(
-                    db, tier=user.subscription_tier
-                )
-                print(
-                    f"❌ Subscription cancelled: {user.email} - {user.subscription_tier}"
-                )
+            EmailService.send_subscription_cancelled(email=user.email, db=db)
+            AdminNotificationService.notify_subscription_cancelled(
+                email=user.email, user_id=user.id, tier=user.subscription_tier
+            )
+            ProviderNotificationService.notify_subscription_cancelled(
+                db, tier=user.subscription_tier
+            )
+            print(f"❌ Subscription cancelled: {user.email} - {user.subscription_tier}")
 
             user.subscription_status = "canceled"
             user.subscription_tier = "free"
             user.stripe_subscription_id = None
-
             db.commit()
     finally:
         db.close()
@@ -338,9 +291,6 @@ def handle_subscription_created(subscription):
         subscription_id = subscription["id"]
         customer_id = subscription["customer"]
         status = subscription["status"]
-        trial_end = subscription.get("trial_end")
-
-        trial_credits_str = subscription.get("metadata", {}).get("trial_credits")
 
         user = db.query(User).filter(User.stripe_customer_id == customer_id).first()
 
@@ -356,78 +306,20 @@ def handle_subscription_created(subscription):
                 for tier, pid in STRIPE_PRICE_IDS.items():
                     if pid == price_id:
                         user.subscription_tier = tier
-
-                        if trial_credits_str:
-                            trial_credits = int(trial_credits_str)
-                        else:
-                            trial_credits = StripeService.get_trial_credits(tier)
-
-                        CreditsService.set_credits(db, user.id, trial_credits)
-
-                        print(
-                            f"✨ Trial started: {user.email} - {tier} - {trial_credits} credits"
-                        )
+                        print(f"✨ Subscription created: {user.email} - {tier}")
                         break
 
             db.commit()
 
-            if trial_end:
-                trial_end_date = datetime.fromtimestamp(trial_end)
-                EmailService.send_trial_started(
-                    email=user.email,
-                    tier=user.subscription_tier,
-                    trial_end_date=trial_end_date,
-                    trial_credits=trial_credits if trial_credits_str else None,
-                    db=db,
-                )
-
-                AdminNotificationService.notify_trial_started(
-                    email=user.email, user_id=user.id, tier=user.subscription_tier
-                )
+            AdminNotificationService.notify_new_subscription(
+                email=user.email,
+                user_id=user.id,
+                tier=user.subscription_tier,
+                amount=None,
+            )
 
     except Exception as e:
         print(f"Error in handle_subscription_created: {e}")
         db.rollback()
-    finally:
-        db.close()
-
-
-def handle_trial_will_end(subscription):
-    db = SessionLocal()
-    try:
-        customer_id = subscription["customer"]
-        trial_end = subscription.get("trial_end")
-
-        default_payment_method = subscription.get("default_payment_method")
-        has_payment_method = default_payment_method is not None
-
-        user = db.query(User).filter(User.stripe_customer_id == customer_id).first()
-
-        if user:
-            trial_end_date = datetime.fromtimestamp(trial_end) if trial_end else None
-
-            EmailService.send_trial_ending_reminder(
-                email=user.email,
-                tier=user.subscription_tier,
-                trial_end_date=trial_end_date,
-                has_payment_method=has_payment_method,
-                db=db,
-            )
-
-            if has_payment_method:
-                AdminNotificationService.notify_trial_ending(
-                    email=user.email, user_id=user.id, tier=user.subscription_tier
-                )
-            else:
-                AdminNotificationService.notify_trial_ending_no_payment(
-                    email=user.email, user_id=user.id, tier=user.subscription_tier
-                )
-
-            print(
-                f"⏰ Trial ending in 3 days: {user.email} - {user.subscription_tier} - Payment method: {has_payment_method}"
-            )
-
-    except Exception as e:
-        print(f"Error in handle_trial_will_end: {e}")
     finally:
         db.close()

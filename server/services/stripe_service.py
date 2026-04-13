@@ -28,9 +28,6 @@ class StripeService:
     def create_checkout_session(
         customer_id: str, price_id: str, user_id: int, tier: str
     ):
-        trial_days = settings.TRIAL_CONFIG["duration_days"]
-        trial_credits = StripeService.get_trial_credits(tier)
-
         session = stripe.checkout.Session.create(
             customer=customer_id,
             payment_method_types=["card"],
@@ -41,22 +38,11 @@ class StripeService:
                 }
             ],
             mode="subscription",
-            subscription_data={
-                "trial_period_days": trial_days,
-                "trial_settings": {
-                    "end_behavior": {"missing_payment_method": "cancel"}
-                },
-                "metadata": {
-                    "trial_credits": str(trial_credits),
-                },
-            },
-            payment_method_collection=settings.TRIAL_CONFIG["payment_method"],
             success_url=f"{settings.FRONTEND_URL}/dashboard.html?session_id={{CHECKOUT_SESSION_ID}}",
             cancel_url=f"{settings.FRONTEND_URL}/dashboard.html",
             metadata={
                 "user_id": user_id,
                 "tier": tier,
-                "trial_credits": str(trial_credits),
             },
             allow_promotion_codes=True,
         )
