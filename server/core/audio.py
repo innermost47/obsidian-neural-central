@@ -1,9 +1,7 @@
 import httpx
 import librosa
 import soundfile as sf
-import os
 import io
-import tempfile
 import numpy as np
 import asyncio
 import pyrubberband as pyrb
@@ -47,55 +45,41 @@ def stretch_audio_to_bpm(
     max_bpm_diff: float = 0.5,
 ) -> np.ndarray:
     if detected_bpm <= 0 or target_bpm <= 0:
-        print("⚠️ Invalid BPM, no stretch")
         return audio
 
-    while detected_bpm > 150:
+    while detected_bpm >= 200:
         detected_bpm /= 2.0
-    while detected_bpm < 70:
+    while detected_bpm < 60:
         detected_bpm *= 2.0
-
-    while target_bpm > 150:
+    while target_bpm >= 200:
         target_bpm /= 2.0
-    while target_bpm < 70:
+    while target_bpm < 60:
         target_bpm *= 2.0
 
-    bpm_difference = abs(detected_bpm - target_bpm)
-
-    if bpm_difference <= max_bpm_diff:
-        print(
-            f"✅ BPM in groove ({detected_bpm:.1f} vs {target_bpm}), no stretch needed (diff: {bpm_difference:.2f})"
-        )
+    if abs(detected_bpm - target_bpm) <= max_bpm_diff:
+        print(f"✅ BPM in groove ({detected_bpm:.1f} vs {target_bpm})")
         return audio
 
-    stretch_ratio = detected_bpm / target_bpm
-
-    print(
-        f"🔧 Time-stretch (Rubberband Rhythm): {detected_bpm:.1f} → {target_bpm} BPM (ratio {stretch_ratio:.4f})"
-    )
+    stretch_rate = target_bpm / detected_bpm
+    print(f"🔧 Time-stretch (Rubberband): {detected_bpm:.1f} → {target_bpm} BPM")
 
     try:
-        rb_settings = pyrb.RubberbandOption.RUBBERBAND_OPTION_PROCESS_TRANSIENTS_STRETCH
+        rb_settings = [pyrb.RUBBERBAND_OPTION_PROCESS_TRANSIENTS_STRETCH]
 
-        if audio.ndim == 2:
-            left = pyrb.time_stretch(audio[0], sr, stretch_ratio, rb_settings)
-            right = pyrb.time_stretch(audio[1], sr, stretch_ratio, rb_settings)
+        if audio.ndim == 2 and audio.shape[0] == 2:
+            left = pyrb.time_stretch(audio[0], sr, stretch_rate, rb_settings)
+            right = pyrb.time_stretch(audio[1], sr, stretch_rate, rb_settings)
             return np.array([left, right])
         else:
-            return pyrb.time_stretch(audio, sr, stretch_ratio, rb_settings)
-
-    except AttributeError:
-        print("⚠️ Pyrb old version detected, stretching without rhythm optimization...")
-        if audio.ndim == 2:
-            left = pyrb.time_stretch(audio[0], sr, stretch_ratio)
-            right = pyrb.time_stretch(audio[1], sr, stretch_ratio)
-            return np.array([left, right])
-        else:
-            return pyrb.time_stretch(audio, sr, stretch_ratio)
+            return pyrb.time_stretch(audio, sr, stretch_rate, rb_settings)
 
     except Exception as e:
-        print(f"⚠️ Time-stretch failed, audio unchanged: {e}")
-        return audio
+        print(f"⚠️ Pyrb failed: {e}, using Librosa.")
+        if audio.ndim == 2 and audio.shape[0] == 2:
+            left = librosa.effects.time_stretch(audio[0], rate=stretch_rate)
+            right = librosa.effects.time_stretch(audio[1], rate=stretch_rate)
+            return np.array([left, right])
+        return librosa.effects.time_stretch(audio, rate=stretch_rate)
 
 
 async def load_audio_original(audio_bytes: bytes) -> tuple[np.ndarray, int]:
