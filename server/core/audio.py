@@ -12,45 +12,28 @@ import essentia.standard as es
 executor = ThreadPoolExecutor(max_workers=4)
 
 
-def applicate_lite_fade_in_fade_out(audio, sr):
-    fade_ms = 5
+def applicate_lite_fade_in_fade_out(audio: np.ndarray, sr: int) -> np.ndarray:
+    fade_ms = 15
     fade_samples = int(sr * (fade_ms / 1000.0))
 
     is_stereo = audio.ndim == 2 and audio.shape[0] == 2
+    num_samples = audio.shape[1] if is_stereo else len(audio)
+
+    if num_samples <= 2 * fade_samples:
+        fade_samples = num_samples // 2
+
+    if fade_samples == 0:
+        return audio
+
+    fade_in_ramp = np.linspace(0.0, 1.0, fade_samples, dtype=audio.dtype)
+    fade_out_ramp = np.linspace(1.0, 0.0, fade_samples, dtype=audio.dtype)
 
     if is_stereo:
-        num_samples = audio.shape[1]
-
-        if num_samples > 2 * fade_samples:
-            fade_out_ramp = np.linspace(1.0, 0.0, fade_samples)
-            fade_in_ramp = np.linspace(0.0, 1.0, fade_samples)
-
-            for channel in range(2):
-                end_part = audio[channel, -fade_samples:]
-                start_part = audio[channel, :fade_samples]
-
-                audio[channel, :fade_samples] = (
-                    start_part * fade_in_ramp + end_part * fade_out_ramp
-                )
-
-                audio[channel, -fade_samples:] = end_part * fade_out_ramp
-        else:
-            print(f"ℹ️  Audio too short for {fade_ms}ms crossfade (stereo).")
-
+        audio[:, :fade_samples] *= fade_in_ramp
+        audio[:, -fade_samples:] *= fade_out_ramp
     else:
-        num_samples = len(audio)
-
-        if num_samples > 2 * fade_samples:
-            end_part = audio[-fade_samples:]
-            start_part = audio[:fade_samples]
-
-            fade_out_ramp = np.linspace(1.0, 0.0, fade_samples)
-            fade_in_ramp = np.linspace(0.0, 1.0, fade_samples)
-
-            audio[:fade_samples] = start_part * fade_in_ramp + end_part * fade_out_ramp
-            audio[-fade_samples:] = end_part * fade_out_ramp
-        else:
-            print(f"ℹ️  Audio too short for {fade_ms}ms crossfade (mono).")
+        audio[:fade_samples] *= fade_in_ramp
+        audio[-fade_samples:] *= fade_out_ramp
 
     return audio
 
@@ -60,17 +43,31 @@ def stretch_audio_to_bpm(
     sr: int,
     detected_bpm: float,
     target_bpm: float,
-    threshold: float = 0.01,
+    max_bpm_diff: float = 0.5,
 ) -> np.ndarray:
     if detected_bpm <= 0 or target_bpm <= 0:
         print("⚠️ Invalid BPM, no stretch")
         return audio
 
-    stretch_ratio = detected_bpm / target_bpm
+    while detected_bpm > 150:
+        detected_bpm /= 2.0
+    while detected_bpm < 70:
+        detected_bpm *= 2.0
 
-    if abs(stretch_ratio - 1.0) <= threshold:
-        print(f"✅ BPM already correct ({detected_bpm:.1f} → {target_bpm}), no stretch")
+    while target_bpm > 150:
+        target_bpm /= 2.0
+    while target_bpm < 70:
+        target_bpm *= 2.0
+
+    bpm_difference = abs(detected_bpm - target_bpm)
+
+    if bpm_difference <= max_bpm_diff:
+        print(
+            f"✅ BPM in groove ({detected_bpm:.1f} vs {target_bpm}), no stretch needed (diff: {bpm_difference:.2f})"
+        )
         return audio
+
+    stretch_ratio = detected_bpm / target_bpm
 
     print(
         f"🔧 Time-stretch: {detected_bpm:.1f} → {target_bpm} BPM (ratio {stretch_ratio:.4f})"
@@ -78,11 +75,11 @@ def stretch_audio_to_bpm(
 
     try:
         if audio.ndim == 2:
-            left = pyrb.time_stretch(audio[0], sr, stretch_ratio)
-            right = pyrb.time_stretch(audio[1], sr, stretch_ratio)
+            left = librosa.effects.time_stretch(audio[0], rate=stretch_ratio)
+            right = librosa.effects.time_stretch(audio[1], rate=stretch_ratio)
             return np.array([left, right])
         else:
-            return pyrb.time_stretch(audio, sr, stretch_ratio)
+            return librosa.effects.time_stretch(audio, rate=stretch_ratio)
     except Exception as e:
         print(f"⚠️ Time-stretch failed, audio unchanged: {e}")
         return audio
