@@ -178,12 +178,6 @@ async def detect_bpm(
                 )
                 detected /= 2.0
 
-            while detected < (expected_bpm / 1.8):
-                print(
-                    f"⚠️ Essentia under-detected: {detected:.1f} → {detected*2:.1f} (target ~{expected_bpm})"
-                )
-                detected *= 2.0
-
         print(f"🎯 BPM detected (Essentia): {detected:.2f}")
         return detected
     except Exception as e:
