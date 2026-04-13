@@ -11,7 +11,8 @@ from server.core.audio import (
     audio_to_wav_bytes,
     build_response_headers,
     detect_bpm,
-    load_and_resample,
+    load_audio_original,
+    resample_audio,
 )
 from server.services.fal_service import FalService
 from server.services.provider_service import ProviderService
@@ -287,22 +288,22 @@ async def generate_audio(
             int(request.sample_rate) if hasattr(request, "sample_rate") else 44100
         )
         audio_data = await fetch_audio_bytes(result)
-        audio, sr = await load_and_resample(audio_data, target_sr)
+        audio, original_sr = await load_audio_original(audio_data)
 
         if resolved["model"] == "stable-audio-open-1.0":
-            detected_bpm = await detect_bpm(audio, sr)
+            detected_bpm = await detect_bpm(audio, original_sr)
             audio = stretch_audio_to_bpm(
-                audio, sr, detected_bpm, float(resolved["bpm"])
+                audio, original_sr, detected_bpm, float(resolved["bpm"])
             )
         else:
             snapped_bpm = result.get("snapped_bpm")
             detected_bpm = float(snapped_bpm) if snapped_bpm else None
             if snapped_bpm and int(snapped_bpm) != int(resolved["bpm"]):
                 audio = stretch_audio_to_bpm(
-                    audio, sr, float(snapped_bpm), float(resolved["bpm"])
+                    audio, original_sr, float(snapped_bpm), float(resolved["bpm"])
                 )
 
-        target_samples = int(round(float(request.generation_duration) * sr))
+        target_samples = int(round(float(request.generation_duration) * original_sr))
         if audio.ndim == 2:
             if audio.shape[1] > target_samples:
                 audio = audio[:, :target_samples]
@@ -310,8 +311,11 @@ async def generate_audio(
             if len(audio) > target_samples:
                 audio = audio[:target_samples]
 
-        audio = applicate_lite_fade_in_fade_out(audio, sr)
-        wav_bytes, duration = audio_to_wav_bytes(audio, sr)
+        audio = applicate_lite_fade_in_fade_out(audio, original_sr)
+
+        audio = resample_audio(audio, original_sr, target_sr)
+
+        wav_bytes, duration = audio_to_wav_bytes(audio, target_sr)
 
         generation_details = {
             "prompt": request.prompt,

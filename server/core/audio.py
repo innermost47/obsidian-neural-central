@@ -98,41 +98,30 @@ def stretch_audio_to_bpm(
         return audio
 
 
-async def load_and_resample(
-    audio_data: bytes, target_sr: int
-) -> tuple[np.ndarray, int]:
-    tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".wav")
-    try:
-        tmp.write(audio_data)
-        tmp.close()
-        audio, sr_original = librosa.load(tmp.name, sr=None, mono=False)
-        print(f"📊 Sample rate original: {sr_original}Hz, target: {target_sr}Hz")
-        print(f"🎵 Shape: {audio.shape} ({'stereo' if audio.ndim == 2 else 'mono'})")
+async def load_audio_original(audio_bytes: bytes) -> tuple[np.ndarray, int]:
+    def _load():
+        buffer = io.BytesIO(audio_bytes)
+        audio, sr = librosa.load(buffer, sr=None, mono=False)
+        return audio, sr
 
-        if sr_original != target_sr:
-            print(f"🔄 Resampling {sr_original}Hz → {target_sr}Hz...")
-            if audio.ndim == 2:
-                audio = np.array(
-                    [
-                        librosa.resample(
-                            audio[0], orig_sr=sr_original, target_sr=target_sr
-                        ),
-                        librosa.resample(
-                            audio[1], orig_sr=sr_original, target_sr=target_sr
-                        ),
-                    ]
-                )
-            else:
-                audio = librosa.resample(
-                    audio, orig_sr=sr_original, target_sr=target_sr
-                )
-        else:
-            print(f"✅ No resampling required")
+    loop = asyncio.get_event_loop()
+    return await loop.run_in_executor(executor, _load)
 
-        return audio, target_sr
-    finally:
-        if os.path.exists(tmp.name):
-            os.remove(tmp.name)
+
+def resample_audio(audio: np.ndarray, orig_sr: int, target_sr: int) -> np.ndarray:
+    if orig_sr == target_sr:
+        return audio
+
+    print(f"🔄 Final resampling {orig_sr}Hz → {target_sr}Hz...")
+    if audio.ndim == 2:
+        return np.array(
+            [
+                librosa.resample(audio[0], orig_sr=orig_sr, target_sr=target_sr),
+                librosa.resample(audio[1], orig_sr=orig_sr, target_sr=target_sr),
+            ]
+        )
+    else:
+        return librosa.resample(audio, orig_sr=orig_sr, target_sr=target_sr)
 
 
 async def detect_bpm(audio: np.ndarray, sr: int) -> float | None:
