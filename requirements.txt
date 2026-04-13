@@ -26,3 +26,5 @@ python-dateutil
 google-analytics-data
 pyrubberband
 ollama
+cython
+madmom

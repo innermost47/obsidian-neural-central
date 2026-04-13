@@ -7,7 +7,7 @@ import numpy as np
 import asyncio
 import pyrubberband as pyrb
 from concurrent.futures import ThreadPoolExecutor
-
+import madmom
 
 executor = ThreadPoolExecutor(max_workers=4)
 
@@ -129,14 +129,26 @@ async def detect_bpm(audio: np.ndarray, sr: int) -> float | None:
     try:
         loop = asyncio.get_event_loop()
         audio_mono = librosa.to_mono(audio) if audio.ndim == 2 else audio
-        tempo, _ = await loop.run_in_executor(
-            executor, lambda: librosa.beat.beat_track(y=audio_mono, sr=sr)
-        )
-        detected = float(tempo)
-        print(f"🎯 BPM detected: {detected:.2f}")
+
+        if sr != 22050:
+            audio_mono = await loop.run_in_executor(
+                executor,
+                lambda: librosa.resample(audio_mono, orig_sr=sr, target_sr=22050),
+            )
+            sr = 22050
+
+        def process():
+            act = madmom.features.beats.RNNBeatProcessor()(audio_mono)
+            bpm = madmom.features.beats.BeatTrackingProcessor(min_bpm=60, max_bpm=180)(
+                act
+            )
+            return float(bpm)
+
+        detected = await loop.run_in_executor(executor, process)
+        print(f"🎯 BPM detected (Madmom): {detected:.2f}")
         return detected
     except Exception as e:
-        print(f"⚠️ BPM detection failed: {e}")
+        print(f"⚠️ Madmom BPM failed: {e}")
         return None
 
 
