@@ -2,9 +2,11 @@ import httpx
 import librosa
 import soundfile as sf
 import io
+import subprocess
+import tempfile
+import os
 import numpy as np
 import asyncio
-import pyrubberband as pyrb
 from concurrent.futures import ThreadPoolExecutor
 import essentia.standard as es
 
@@ -60,26 +62,69 @@ def stretch_audio_to_bpm(
         print(f"✅ BPM in groove ({detected_bpm:.1f} vs {target_bpm})")
         return audio
 
-    stretch_rate = target_bpm / detected_bpm
-    print(f"🔧 Time-stretch: {detected_bpm:.1f} → {target_bpm} BPM")
+    time_ratio = target_bpm / detected_bpm
+
+    print(
+        f"🔧 Time-stretch (Native Rubberband CLI): {detected_bpm:.1f} → {target_bpm} BPM (ratio {time_ratio:.4f})"
+    )
+
+    in_path = None
+    out_path = None
 
     try:
-        rb_settings = [4]
-
         if audio.ndim == 2 and audio.shape[0] == 2:
-            left = pyrb.time_stretch(audio[0], sr, stretch_rate, rb_settings)
-            right = pyrb.time_stretch(audio[1], sr, stretch_rate, rb_settings)
-            return np.array([left, right])
+            audio_to_write = np.ascontiguousarray(audio.T)
         else:
-            return pyrb.time_stretch(audio, sr, stretch_rate, rb_settings)
+            audio_to_write = audio
+
+        with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as f_in:
+            in_path = f_in.name
+        out_path = in_path.replace(".wav", "_stretched.wav")
+
+        sf.write(in_path, audio_to_write, sr, subtype="PCM_16")
+
+        cmd = [
+            "rubberband",
+            "--time",
+            str(time_ratio),
+            "--fine",
+            "--window-long",
+            "--channels",
+            "2",
+            "-q",
+            in_path,
+            out_path,
+        ]
+
+        result = subprocess.run(cmd, capture_output=True, text=True)
+
+        if result.returncode != 0:
+            raise Exception(f"CLI Error: {result.stderr}")
+
+        stretched_audio, _ = librosa.load(out_path, sr=sr, mono=False)
+
+        if stretched_audio.ndim == 1:
+            stretched_audio = np.array([stretched_audio, stretched_audio])
+        elif stretched_audio.shape[0] == 2:
+            stretched_audio = stretched_audio.T
+
+        return stretched_audio
 
     except Exception as e:
-        print(f"⚠️ Pyrb hard-failed ({e}), forced to use Librosa (will sound bad)")
+        print(
+            f"⚠️ Rubberband CLI failed: {e}, falling back to Librosa (audio will sound bad)"
+        )
         if audio.ndim == 2 and audio.shape[0] == 2:
-            left = librosa.effects.time_stretch(audio[0], rate=stretch_rate)
-            right = librosa.effects.time_stretch(audio[1], rate=stretch_rate)
+            left = librosa.effects.time_stretch(audio[0], rate=time_ratio)
+            right = librosa.effects.time_stretch(audio[1], rate=time_ratio)
             return np.array([left, right])
-        return librosa.effects.time_stretch(audio, rate=stretch_rate)
+        return librosa.effects.time_stretch(audio, rate=time_ratio)
+
+    finally:
+        if in_path and os.path.exists(in_path):
+            os.remove(in_path)
+        if out_path and os.path.exists(out_path):
+            os.remove(out_path)
 
 
 async def load_audio_original(audio_bytes: bytes) -> tuple[np.ndarray, int]:
