@@ -104,10 +104,9 @@ def stretch_audio_to_bpm(
             raise Exception(f"CLI Error: {result.stderr}")
 
         stretched_audio, _ = librosa.load(out_path, sr=sr, mono=False)
-
         if stretched_audio.ndim == 1:
             stretched_audio = np.array([stretched_audio, stretched_audio])
-        elif stretched_audio.shape[0] == 2:
+        elif stretched_audio.ndim == 2 and stretched_audio.shape[1] == 2:
             stretched_audio = stretched_audio.T
 
         return stretched_audio
