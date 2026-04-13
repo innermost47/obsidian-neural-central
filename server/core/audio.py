@@ -4,6 +4,12 @@ import soundfile as sf
 import os
 import tempfile
 import numpy as np
+import asyncio
+import pyrubberband as pyrb
+from concurrent.futures import ThreadPoolExecutor
+
+
+executor = ThreadPoolExecutor(max_workers=4)
 
 
 def applicate_lite_fade_in_fade_out(audio, sr):
@@ -49,6 +55,39 @@ def applicate_lite_fade_in_fade_out(audio, sr):
     return audio
 
 
+def stretch_audio_to_bpm(
+    audio: np.ndarray,
+    sr: int,
+    detected_bpm: float,
+    target_bpm: float,
+    threshold: float = 0.01,
+) -> np.ndarray:
+    if detected_bpm <= 0 or target_bpm <= 0:
+        print("⚠️ Invalid BPM, no stretch")
+        return audio
+
+    stretch_ratio = detected_bpm / target_bpm
+
+    if abs(stretch_ratio - 1.0) <= threshold:
+        print(f"✅ BPM already correct ({detected_bpm:.1f} → {target_bpm}), no stretch")
+        return audio
+
+    print(
+        f"🔧 Time-stretch: {detected_bpm:.1f} → {target_bpm} BPM (ratio {stretch_ratio:.4f})"
+    )
+
+    try:
+        if audio.ndim == 2:
+            left = pyrb.time_stretch(audio[0], sr, stretch_ratio)
+            right = pyrb.time_stretch(audio[1], sr, stretch_ratio)
+            return np.array([left, right])
+        else:
+            return pyrb.time_stretch(audio, sr, stretch_ratio)
+    except Exception as e:
+        print(f"⚠️ Time-stretch failed, audio unchanged: {e}")
+        return audio
+
+
 async def load_and_resample(
     audio_data: bytes, target_sr: int
 ) -> tuple[np.ndarray, int]:
@@ -84,6 +123,21 @@ async def load_and_resample(
     finally:
         if os.path.exists(tmp.name):
             os.remove(tmp.name)
+
+
+async def detect_bpm(audio: np.ndarray, sr: int) -> float | None:
+    try:
+        loop = asyncio.get_event_loop()
+        audio_mono = librosa.to_mono(audio) if audio.ndim == 2 else audio
+        tempo, _ = await loop.run_in_executor(
+            executor, lambda: librosa.beat.beat_track(y=audio_mono, sr=sr)
+        )
+        detected = float(tempo)
+        print(f"🎯 BPM detected: {detected:.2f}")
+        return detected
+    except Exception as e:
+        print(f"⚠️ BPM detection failed: {e}")
+        return None
 
 
 def audio_to_wav_bytes(audio: np.ndarray, sr: int) -> tuple[bytes, float]:
