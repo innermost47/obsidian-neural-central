@@ -15,27 +15,27 @@ executor = ThreadPoolExecutor(max_workers=4)
 
 
 def applicate_lite_fade_in_fade_out(audio: np.ndarray, sr: int) -> np.ndarray:
-    fade_ms = 15
-    fade_samples = int(sr * (fade_ms / 1000.0))
+    # fade_ms = 15
+    # fade_samples = int(sr * (fade_ms / 1000.0))
 
-    is_stereo = audio.ndim == 2 and audio.shape[0] == 2
-    num_samples = audio.shape[1] if is_stereo else len(audio)
+    # is_stereo = audio.ndim == 2 and audio.shape[0] == 2
+    # num_samples = audio.shape[1] if is_stereo else len(audio)
 
-    if num_samples <= 2 * fade_samples:
-        fade_samples = num_samples // 2
+    # if num_samples <= 2 * fade_samples:
+    #     fade_samples = num_samples // 2
 
-    if fade_samples == 0:
-        return audio
+    # if fade_samples == 0:
+    #     return audio
 
-    fade_in_ramp = np.linspace(0.0, 1.0, fade_samples, dtype=audio.dtype)
-    fade_out_ramp = np.linspace(1.0, 0.0, fade_samples, dtype=audio.dtype)
+    # fade_in_ramp = np.linspace(0.0, 1.0, fade_samples, dtype=audio.dtype)
+    # fade_out_ramp = np.linspace(1.0, 0.0, fade_samples, dtype=audio.dtype)
 
-    if is_stereo:
-        audio[:, :fade_samples] *= fade_in_ramp
-        audio[:, -fade_samples:] *= fade_out_ramp
-    else:
-        audio[:fade_samples] *= fade_in_ramp
-        audio[-fade_samples:] *= fade_out_ramp
+    # if is_stereo:
+    #     audio[:, :fade_samples] *= fade_in_ramp
+    #     audio[:, -fade_samples:] *= fade_out_ramp
+    # else:
+    #     audio[:fade_samples] *= fade_in_ramp
+    #     audio[-fade_samples:] *= fade_out_ramp
 
     return audio
 
