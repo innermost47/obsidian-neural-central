@@ -326,7 +326,6 @@ def refill_provider_credits():
 def compute_and_redistribute():
     import asyncio
     import stripe
-    from sqlalchemy import func
     from server.config import settings
     from server.services.provider_ping_service import ProviderPingService
     from server.core.database import Provider, ProviderDailyStats

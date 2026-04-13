@@ -9,10 +9,6 @@ stripe.api_key = settings.STRIPE_SECRET_KEY
 class StripeService:
 
     @staticmethod
-    def get_trial_credits(tier: str) -> int:
-        return settings.TRIAL_CONFIG["credits"].get(tier, 10)
-
-    @staticmethod
     def calculate_gift_price(tier: str, duration_months: int) -> int:
         monthly_price = settings.TIER_PRICES.get(tier)
         if not monthly_price:

@@ -96,17 +96,6 @@ class Settings:
         "studio": 5999,
     }
 
-    TRIAL_CONFIG = {
-        "duration_days": 7,
-        "credits": {
-            "base": 100,
-            "starter": 100,
-            "pro": 100,
-            "studio": 100,
-        },
-        "payment_method": "if_required",
-    }
-
     VERIFY_TIMEOUT = float(os.getenv("VERIFY_TIMEOUT", "120.0"))
     VERIFY_POOL_PCT = float(os.getenv("VERIFY_POOL_PCT", "0.30"))
     SIMILARITY_THRESHOLD = float(os.getenv("SIMILARITY_THRESHOLD", "0.98"))
@@ -370,6 +359,7 @@ class Settings:
 settings = Settings()
 
 STRIPE_PRICE_IDS = {
+    "base": settings.STRIPE_PRICE_BASE,
     "starter": settings.STRIPE_PRICE_STARTER,
     "pro": settings.STRIPE_PRICE_PRO,
     "studio": settings.STRIPE_PRICE_STUDIO,
