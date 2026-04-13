@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks
+from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import RedirectResponse
 from sqlalchemy.orm import Session
 import pyotp
@@ -92,7 +92,7 @@ async def register(
         email=user_data.email,
         hashed_password=hashed_password,
         api_key=encrypted_key,
-        credits_total=10,
+        credits_total=200,
         credits_used=0,
         email_verified=False,
         verification_token=verification_token,
@@ -440,7 +440,7 @@ async def google_callback(code: str, db: Session = Depends(get_db)):
                 email=email,
                 hashed_password=None,
                 api_key=encrypted_key,
-                credits_total=10,
+                credits_total=200,
                 credits_used=0,
                 email_verified=True,
                 oauth_provider="google",
