@@ -62,11 +62,7 @@ def stretch_audio_to_bpm(
         print(f"✅ BPM in groove ({detected_bpm:.1f} vs {target_bpm})")
         return audio
 
-    time_ratio = target_bpm / detected_bpm
-
-    print(
-        f"🔧 Time-stretch (Native Rubberband CLI): {detected_bpm:.1f} → {target_bpm} BPM (ratio {time_ratio:.4f})"
-    )
+    print(f"🔧 Time-stretch (Rubberband R3): {detected_bpm:.1f} → {target_bpm} BPM")
 
     in_path = None
     out_path = None
@@ -84,19 +80,25 @@ def stretch_audio_to_bpm(
         sf.write(in_path, audio_to_write, sr, subtype="PCM_16")
 
         cmd = [
-            "rubberband",
-            "--time",
-            str(time_ratio),
-            "--fine",
-            "--window-long",
-            "--channels",
-            "2",
+            "rubberband-r3",
+            f"-T{int(detected_bpm)}:{int(target_bpm)}",
             "-q",
             in_path,
             out_path,
         ]
 
         result = subprocess.run(cmd, capture_output=True, text=True)
+
+        if result.returncode != 0 and "not found" in str(result.stderr).lower():
+            print("⚠️ R3 engine not found, fallback to R2...")
+            cmd = [
+                "rubberband",
+                f"-T{int(detected_bpm)}:{int(target_bpm)}",
+                "-q",
+                in_path,
+                out_path,
+            ]
+            result = subprocess.run(cmd, capture_output=True, text=True)
 
         if result.returncode != 0:
             raise Exception(f"CLI Error: {result.stderr}")
@@ -112,8 +114,9 @@ def stretch_audio_to_bpm(
 
     except Exception as e:
         print(
-            f"⚠️ Rubberband CLI failed: {e}, falling back to Librosa (audio will sound bad)"
+            f"⚠️ Rubberband failed: {e}, falling back to Librosa (audio will sound bad)"
         )
+        time_ratio = target_bpm / detected_bpm
         if audio.ndim == 2 and audio.shape[0] == 2:
             left = librosa.effects.time_stretch(audio[0], rate=time_ratio)
             right = librosa.effects.time_stretch(audio[1], rate=time_ratio)
