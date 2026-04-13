@@ -27,4 +27,4 @@ google-analytics-data
 pyrubberband
 ollama
 cython
-madmom
+essentia
