@@ -2,6 +2,7 @@ import httpx
 import librosa
 import soundfile as sf
 import os
+import io
 import tempfile
 import numpy as np
 import asyncio
@@ -70,16 +71,28 @@ def stretch_audio_to_bpm(
     stretch_ratio = detected_bpm / target_bpm
 
     print(
-        f"🔧 Time-stretch: {detected_bpm:.1f} → {target_bpm} BPM (ratio {stretch_ratio:.4f})"
+        f"🔧 Time-stretch (Rubberband Rhythm): {detected_bpm:.1f} → {target_bpm} BPM (ratio {stretch_ratio:.4f})"
     )
 
     try:
+        rb_settings = pyrb.RubberbandOption.RUBBERBAND_OPTION_PROCESS_TRANSIENTS_STRETCH
+
         if audio.ndim == 2:
-            left = librosa.effects.time_stretch(audio[0], rate=stretch_ratio)
-            right = librosa.effects.time_stretch(audio[1], rate=stretch_ratio)
+            left = pyrb.time_stretch(audio[0], sr, stretch_ratio, rb_settings)
+            right = pyrb.time_stretch(audio[1], sr, stretch_ratio, rb_settings)
             return np.array([left, right])
         else:
-            return librosa.effects.time_stretch(audio, rate=stretch_ratio)
+            return pyrb.time_stretch(audio, sr, stretch_ratio, rb_settings)
+
+    except AttributeError:
+        print("⚠️ Pyrb old version detected, stretching without rhythm optimization...")
+        if audio.ndim == 2:
+            left = pyrb.time_stretch(audio[0], sr, stretch_ratio)
+            right = pyrb.time_stretch(audio[1], sr, stretch_ratio)
+            return np.array([left, right])
+        else:
+            return pyrb.time_stretch(audio, sr, stretch_ratio)
+
     except Exception as e:
         print(f"⚠️ Time-stretch failed, audio unchanged: {e}")
         return audio
@@ -142,20 +155,21 @@ async def detect_bpm(audio: np.ndarray, sr: int) -> float | None:
 
 
 def audio_to_wav_bytes(audio: np.ndarray, sr: int) -> tuple[bytes, float]:
-    tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".wav")
+    buffer = io.BytesIO()
+
     try:
         if audio.ndim == 2:
-            sf.write(tmp.name, audio.T, sr)
+            sf.write(buffer, audio.T, sr, format="WAV")
             duration = audio.shape[1] / sr
         else:
-            sf.write(tmp.name, audio, sr)
+            sf.write(buffer, audio, sr, format="WAV")
             duration = len(audio) / sr
-        tmp.close()
-        with open(tmp.name, "rb") as f:
-            return f.read(), duration
+
+        wav_bytes = buffer.getvalue()
+        return wav_bytes, duration
+
     finally:
-        if os.path.exists(tmp.name):
-            os.remove(tmp.name)
+        buffer.close()
 
 
 def sanitize_header(value: str) -> str:

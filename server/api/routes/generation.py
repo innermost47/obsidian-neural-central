@@ -289,8 +289,6 @@ async def generate_audio(
         audio_data = await fetch_audio_bytes(result)
         audio, sr = await load_and_resample(audio_data, target_sr)
 
-        audio = applicate_lite_fade_in_fade_out(audio, sr)
-
         if resolved["model"] == "stable-audio-open-1.0":
             detected_bpm = await detect_bpm(audio, sr)
             audio = stretch_audio_to_bpm(
@@ -312,6 +310,7 @@ async def generate_audio(
             if len(audio) > target_samples:
                 audio = audio[:target_samples]
 
+        audio = applicate_lite_fade_in_fade_out(audio, sr)
         wav_bytes, duration = audio_to_wav_bytes(audio, sr)
 
         generation_details = {
