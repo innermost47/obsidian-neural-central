@@ -5,7 +5,6 @@ from server.api.models import GenerateRequest
 from server.api.dependencies import get_user_from_api_key
 from server.core.database import get_db, User
 from server.core.audio import (
-    applicate_lite_fade_in_fade_out,
     stretch_audio_to_bpm,
     fetch_audio_bytes,
     audio_to_wav_bytes,
@@ -312,8 +311,6 @@ async def generate_audio(
         else:
             if len(audio) > target_samples:
                 audio = audio[:target_samples]
-
-        audio = applicate_lite_fade_in_fade_out(audio, original_sr)
 
         audio = resample_audio(audio, original_sr, target_sr)
 
