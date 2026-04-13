@@ -5,6 +5,7 @@ import io
 import subprocess
 import tempfile
 import os
+from typing import Optional
 import numpy as np
 import asyncio
 from concurrent.futures import ThreadPoolExecutor
@@ -155,7 +156,9 @@ def resample_audio(audio: np.ndarray, orig_sr: int, target_sr: int) -> np.ndarra
         return librosa.resample(audio, orig_sr=orig_sr, target_sr=target_sr)
 
 
-async def detect_bpm(audio: np.ndarray, sr: int) -> float | None:
+async def detect_bpm(
+    audio: np.ndarray, sr: int, expected_bpm: Optional[float] = None
+) -> float | None:
     try:
         loop = asyncio.get_event_loop()
         audio_mono = librosa.to_mono(audio) if audio.ndim == 2 else audio
@@ -167,6 +170,20 @@ async def detect_bpm(audio: np.ndarray, sr: int) -> float | None:
             return float(bpm)
 
         detected = await loop.run_in_executor(executor, process)
+
+        if detected and expected_bpm and expected_bpm > 0:
+            while detected > (expected_bpm * 1.8):
+                print(
+                    f"⚠️ Essentia over-detected: {detected:.1f} → {detected/2:.1f} (target ~{expected_bpm})"
+                )
+                detected /= 2.0
+
+            while detected < (expected_bpm / 1.8):
+                print(
+                    f"⚠️ Essentia under-detected: {detected:.1f} → {detected*2:.1f} (target ~{expected_bpm})"
+                )
+                detected *= 2.0
+
         print(f"🎯 BPM detected (Essentia): {detected:.2f}")
         return detected
     except Exception as e:

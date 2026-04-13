@@ -291,7 +291,9 @@ async def generate_audio(
         audio, original_sr = await load_audio_original(audio_data)
 
         if resolved["model"] == "stable-audio-open-1.0":
-            detected_bpm = await detect_bpm(audio, original_sr)
+            detected_bpm = await detect_bpm(
+                audio, original_sr, expected_bpm=float(resolved["bpm"])
+            )
             audio = stretch_audio_to_bpm(
                 audio, original_sr, detected_bpm, float(resolved["bpm"])
             )
