@@ -26,6 +26,10 @@ import base64
 import asyncio
 import random
 import json
+import librosa
+from concurrent.futures import ThreadPoolExecutor
+
+executor = ThreadPoolExecutor(max_workers=4)
 
 
 router = APIRouter(tags=["Generation"])
@@ -299,14 +303,32 @@ async def generate_audio(
 
         audio = applicate_lite_fade_in_fade_out(audio, sr)
 
+        loop = asyncio.get_event_loop()
+        if audio.ndim == 2:
+            audio_mono = librosa.to_mono(audio)
+            bpm_task = loop.run_in_executor(
+                executor, lambda: librosa.beat.beat_track(y=audio_mono, sr=sr)
+            )
+        else:
+            bpm_task = loop.run_in_executor(
+                executor, lambda: librosa.beat.beat_track(y=audio, sr=sr)
+            )
+
+        detected_bpm = None
+        try:
+            tempo, _ = await bpm_task
+            detected_bpm = float(tempo)
+            print(f"🎯 BPM detected: {detected_bpm:.2f} (expected: {resolved['bpm']})")
+        except Exception as e:
+            print(f"⚠️ BPM detection failed: {e}")
+
         if resolved["model"] == "stable-audio-open-1.0":
-            detected_bpm = await detect_bpm(audio, sr)
             audio = stretch_audio_to_bpm(
                 audio, sr, detected_bpm, float(resolved["bpm"])
             )
         else:
             snapped_bpm = result.get("snapped_bpm")
-            detected_bpm = float(snapped_bpm) if snapped_bpm else None
+            detected_bpm = float(snapped_bpm) if snapped_bpm else detected_bpm
             if snapped_bpm and int(snapped_bpm) != int(resolved["bpm"]):
                 audio = stretch_audio_to_bpm(
                     audio, sr, float(snapped_bpm), float(resolved["bpm"])
