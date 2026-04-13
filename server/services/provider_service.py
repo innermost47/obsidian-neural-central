@@ -273,14 +273,12 @@ class ProviderService:
                 "duration": duration,
                 "seed": seed,
                 "model": model,
+                "bpm": bpm,
+                "key": key,
             }
             if model == "foundation-1":
-                if bpm:
-                    payload["bpm"] = bpm
                 if bars:
                     payload["bars"] = bars
-                if key:
-                    payload["key"] = key
 
             async with httpx.AsyncClient(timeout=GENERATE_TIMEOUT) as client:
                 response = await client.post(
