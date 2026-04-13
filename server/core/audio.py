@@ -61,10 +61,10 @@ def stretch_audio_to_bpm(
         return audio
 
     stretch_rate = target_bpm / detected_bpm
-    print(f"🔧 Time-stretch (Rubberband): {detected_bpm:.1f} → {target_bpm} BPM")
+    print(f"🔧 Time-stretch: {detected_bpm:.1f} → {target_bpm} BPM")
 
     try:
-        rb_settings = [pyrb.RUBBERBAND_OPTION_PROCESS_TRANSIENTS_STRETCH]
+        rb_settings = [4]
 
         if audio.ndim == 2 and audio.shape[0] == 2:
             left = pyrb.time_stretch(audio[0], sr, stretch_rate, rb_settings)
@@ -74,7 +74,7 @@ def stretch_audio_to_bpm(
             return pyrb.time_stretch(audio, sr, stretch_rate, rb_settings)
 
     except Exception as e:
-        print(f"⚠️ Pyrb failed: {e}, using Librosa.")
+        print(f"⚠️ Pyrb hard-failed ({e}), forced to use Librosa (will sound bad)")
         if audio.ndim == 2 and audio.shape[0] == 2:
             left = librosa.effects.time_stretch(audio[0], rate=stretch_rate)
             right = librosa.effects.time_stretch(audio[1], rate=stretch_rate)
