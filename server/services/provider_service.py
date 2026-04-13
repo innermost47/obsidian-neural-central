@@ -246,17 +246,42 @@ class ProviderService:
 
     @staticmethod
     async def _generate_at_provider(
-        provider: Dict, prompt: str, duration: int, db: Session
-    ) -> Optional[bytes]:
+        provider: Dict,
+        prompt: str,
+        duration: int,
+        db: Session,
+        model: str = "stable-audio-open-1.0",
+        bpm: Optional[int] = None,
+        bars: Optional[int] = None,
+        key: Optional[str] = None,
+    ) -> tuple[Optional[bytes], Optional[int]]:
         try:
             p = db.query(Provider).filter(Provider.id == provider["id"]).first()
             if p:
                 p.is_generating = True
                 db.commit()
+
             print(
-                f"🎵 Sending generation to provider: {provider['name']} - Prompt: {prompt}"
+                f"🎵 Sending generation to provider: {provider['name']} [{model}] - Prompt: {prompt}"
             )
+
             seed = random.randint(0, 2**31 - 1)
+
+            payload = {
+                "action": "generate",
+                "prompt": prompt,
+                "duration": duration,
+                "seed": seed,
+                "model": model,
+            }
+            if model == "foundation-1":
+                if bpm:
+                    payload["bpm"] = bpm
+                if bars:
+                    payload["bars"] = bars
+                if key:
+                    payload["key"] = key
+
             async with httpx.AsyncClient(timeout=GENERATE_TIMEOUT) as client:
                 response = await client.post(
                     f"{provider['url'].rstrip('/')}/process",
@@ -264,25 +289,21 @@ class ProviderService:
                         **settings.BROWSER_HEADERS,
                         "X-API-Key": provider["server_api_key"],
                     },
-                    json={
-                        "action": "generate",
-                        "prompt": prompt,
-                        "duration": duration,
-                        "seed": seed,
-                    },
+                    json=payload,
                 )
+
                 if response.status_code != 200:
                     print(
                         f"❌ Provider {provider['name']} returned HTTP {response.status_code}"
                     )
-                    return None
+                    return None, None
 
                 db_provider = (
                     db.query(Provider).filter(Provider.id == provider["id"]).first()
                 )
                 if not db_provider:
                     print(f"❌ Provider {provider['name']} — not found in database")
-                    return None
+                    return None, None
 
                 try:
                     header_data = {
@@ -292,9 +313,7 @@ class ProviderService:
                         "sample_rate": int(response.headers.get("X-Sample-Rate", "0")),
                         "seed": int(response.headers.get("X-Seed", "0")),
                     }
-
                     gen_response = ProviderGenerateResponse(**header_data)
-
                 except ValidationError as e:
                     print(
                         f"🚫 {provider['name']} — invalid response headers format: BAN"
@@ -302,7 +321,7 @@ class ProviderService:
                     ProviderService._ban_provider(
                         db, provider["id"], f"Invalid response headers format: {e}"
                     )
-                    return None
+                    return None, None
 
                 key_hash = hashlib.sha256(gen_response.api_key.encode()).hexdigest()
                 if key_hash != db_provider.api_key:
@@ -310,14 +329,14 @@ class ProviderService:
                     ProviderService._ban_provider(
                         db, provider["id"], "Invalid API key in response"
                     )
-                    return None
+                    return None, None
 
                 if gen_response.seed != seed:
                     print(f"🚫 {provider['name']} — seed mismatch: BAN")
                     ProviderService._ban_provider(
                         db, provider["id"], "Seed mismatch in response"
                     )
-                    return None
+                    return None, None
 
                 content_type = response.headers.get("content-type", "")
                 if "audio" not in content_type and "octet-stream" not in content_type:
@@ -325,16 +344,21 @@ class ProviderService:
                     ProviderService._ban_provider(
                         db, provider["id"], "Invalid content-type in response"
                     )
-                    return None
+                    return None, None
 
-                return response.content
+                snapped_bpm = None
+                if model == "foundation-1":
+                    raw = response.headers.get("X-Snapped-BPM")
+                    snapped_bpm = int(raw) if raw else bpm
+
+                return response.content, snapped_bpm
 
         except httpx.TimeoutException:
             print(f"⏱️  Provider {provider['name']} timeout after {GENERATE_TIMEOUT}s")
-            return None
+            return None, None
         except Exception as e:
             print(f"❌ Provider {provider['name']} error: {e}")
-            return None
+            return None, None
 
     @staticmethod
     async def generate_audio(
@@ -343,8 +367,11 @@ class ProviderService:
         user_id: int,
         public_user_id: str,
         db: Session,
+        model: str = "stable-audio-open-1.0",
+        bpm: Optional[int] = None,
+        bars: Optional[int] = None,
+        key: Optional[str] = None,
     ) -> Dict[str, Any]:
-
         job = ProviderJob(
             user_id=user_id,
             prompt=prompt,
@@ -355,10 +382,8 @@ class ProviderService:
         db.commit()
 
         provider = await ProviderService._find_available_provider(db)
-
         if provider:
             queue = _provider_queues[provider["id"]]
-
             if queue.full():
                 print(
                     f"⚠️  Provider {provider['name']} queue full, falling back to fal.ai..."
@@ -369,37 +394,50 @@ class ProviderService:
                 db.commit()
 
                 future = asyncio.get_event_loop().create_future()
-                await queue.put((prompt, duration, public_user_id, future, job.id))
+                await queue.put(
+                    (
+                        prompt,
+                        duration,
+                        public_user_id,
+                        future,
+                        job.id,
+                        model,
+                        bpm,
+                        bars,
+                        key,
+                    )
+                )
 
                 if not _provider_workers[provider["id"]]:
                     asyncio.create_task(ProviderService._process_queue(provider))
 
                 try:
                     result = await asyncio.wait_for(future, timeout=180.0)
-
                     if result["success"]:
                         return result
-
                     print(f"⚠️  Provider returned error, falling back to fal.ai...")
-
                 except asyncio.TimeoutError:
                     print(f"⚠️  Provider timeout after 180s, falling back to fal.ai...")
                     job.status = "failed"
                     job.error_message = "Timeout waiting for provider"
                     db.commit()
 
-        print("🔄 Falling back to fal.ai...")
+        if model == "foundation-1":
+            print(
+                "🔄 No Foundation-1 provider available, falling back to fal.ai (stable-audio)..."
+            )
+        else:
+            print("🔄 Falling back to fal.ai...")
+
         job.status = "fallback"
         job.used_fallback = True
         db.commit()
 
         fal_result = await FalService.generate_audio(prompt, duration)
-
         if fal_result["success"]:
             job.status = "done"
             job.completed_at = datetime.now(timezone.utc)
             db.commit()
-
             return {
                 "success": True,
                 "audio_url": fal_result["audio_url"],
@@ -411,14 +449,12 @@ class ProviderService:
             job.status = "failed"
             job.error_message = fal_result.get("error", "fal.ai fallback failed")
             db.commit()
-
             return {
                 "success": False,
                 "error": fal_result.get("error", "All generation methods failed"),
                 "used_fallback": True,
             }
 
-    @staticmethod
     async def _process_queue(provider: dict):
         from server.core.database import SessionLocal
 
@@ -430,7 +466,17 @@ class ProviderService:
 
         try:
             while not queue.empty():
-                prompt, duration, public_user_id, future, job_id = await queue.get()
+                (
+                    prompt,
+                    duration,
+                    public_user_id,
+                    future,
+                    job_id,
+                    model,
+                    bpm,
+                    bars,
+                    key,
+                ) = await queue.get()
 
                 async with lock:
                     db = SessionLocal()
@@ -449,8 +495,10 @@ class ProviderService:
                             job.status = "processing"
                             db.commit()
 
-                        wav_bytes = await ProviderService._generate_at_provider(
-                            provider, prompt, duration, db
+                        wav_bytes, snapped_bpm = (
+                            await ProviderService._generate_at_provider(
+                                provider, prompt, duration, db, model, bpm, bars, key
+                            )
                         )
 
                         if wav_bytes:
@@ -484,7 +532,7 @@ class ProviderService:
                                 )
 
                                 print(
-                                    f"✅ Generation successful via provider: {provider['name']}"
+                                    f"✅ Generation successful via provider: {provider['name']} [{model}]"
                                 )
 
                                 if not future.done():
@@ -494,16 +542,14 @@ class ProviderService:
                                             "wav_bytes": wav_bytes,
                                             "used_fallback": False,
                                             "provider_name": provider["name"],
-                                            "provider_model": provider.get(
-                                                "model", "unknown"
-                                            ),
+                                            "provider_model": model,
+                                            "snapped_bpm": snapped_bpm,
                                         }
                                     )
                             else:
                                 ProviderService._ban_provider(
                                     db, provider_id, "Returned invalid WAV file"
                                 )
-
                                 p = (
                                     db.query(ProviderModel)
                                     .filter(ProviderModel.id == provider_id)

@@ -45,7 +45,6 @@ class ProviderVerificationService:
         seed: int,
         duration: int,
         provider_api_key_hash: str,
-        encoded_server_auth_key: str,
     ) -> Optional[Dict]:
         async with httpx.AsyncClient(timeout=settings.VERIFY_TIMEOUT) as client:
             try:
@@ -60,85 +59,77 @@ class ProviderVerificationService:
                         "prompt": prompt,
                         "seed": seed,
                         "duration": duration,
+                        "model": "stable-audio-open-1.0",
                     },
                 )
-                if response.status_code == 200:
-                    try:
-                        header_data = {
-                            "api_key": response.headers.get("X-Provider-Key", ""),
-                            "model": response.headers.get("X-Model", ""),
-                            "duration": int(response.headers.get("X-Duration", "0")),
-                            "sample_rate": int(
-                                response.headers.get("X-Sample-Rate", "0")
-                            ),
-                            "seed": int(response.headers.get("X-Seed", "0")),
-                        }
 
-                        gen_response = ProviderGenerateResponse(**header_data)
+                if response.status_code != 200:
+                    logger.warning(
+                        f"Verify request failed: HTTP {response.status_code}"
+                    )
+                    return None
 
-                    except ValidationError as e:
-                        logger.warning(
-                            f"🚫 {provider_url} — invalid response headers: BAN"
-                        )
-                        from server.services.provider_service import ProviderService
-                        from server.core.database import SessionLocal
-
-                        ban_db = SessionLocal()
-                        try:
-                            ProviderService._ban_provider(
-                                ban_db,
-                                provider_id,
-                                f"Invalid response headers format: {e}",
-                            )
-                            ban_db.commit()
-                        finally:
-                            ban_db.close()
-                        return None
-
-                    content_type = response.headers.get("content-type", "")
-                    if (
-                        "audio" not in content_type
-                        and "octet-stream" not in content_type
-                    ):
-                        logger.warning(f"🚫 {provider_url} — invalid content-type: BAN")
-                        from server.services.provider_service import ProviderService
-                        from server.core.database import SessionLocal
-
-                        ban_db = SessionLocal()
-                        try:
-                            ProviderService._ban_provider(
-                                ban_db, provider_id, "Invalid content-type in response"
-                            )
-                            ban_db.commit()
-                        finally:
-                            ban_db.close()
-                        return None
-
-                    if gen_response.seed != seed:
-                        logger.warning(f"🚫 {provider_url} — seed mismatch: BAN")
-                        from server.services.provider_service import ProviderService
-                        from server.core.database import SessionLocal
-
-                        ban_db = SessionLocal()
-                        try:
-                            ProviderService._ban_provider(
-                                ban_db, provider_id, "Seed mismatch in verify response"
-                            )
-                            ban_db.commit()
-                        finally:
-                            ban_db.close()
-                        return None
-
-                    return {
-                        "wav": response.content,
-                        "model": gen_response.model,
+                try:
+                    header_data = {
+                        "api_key": response.headers.get("X-Provider-Key", ""),
+                        "model": response.headers.get("X-Model", ""),
+                        "duration": int(response.headers.get("X-Duration", "0")),
+                        "sample_rate": int(response.headers.get("X-Sample-Rate", "0")),
+                        "seed": int(response.headers.get("X-Seed", "0")),
                     }
+                    gen_response = ProviderGenerateResponse(**header_data)
+                except ValidationError as e:
+                    logger.warning(f"🚫 {provider_url} — invalid response headers: BAN")
+                    await ProviderVerificationService._ban_async(
+                        provider_id, f"Invalid response headers format: {e}"
+                    )
+                    return None
 
-                logger.warning(f"Verify request failed: HTTP {response.status_code}")
-                return None
+                returned_key_hash = hashlib.sha256(
+                    gen_response.api_key.encode()
+                ).hexdigest()
+                if returned_key_hash != provider_api_key_hash:
+                    logger.warning(
+                        f"🚫 {provider_url} — invalid key in verify response: BAN"
+                    )
+                    await ProviderVerificationService._ban_async(
+                        provider_id, "Invalid API key in verify response"
+                    )
+                    return None
+
+                content_type = response.headers.get("content-type", "")
+                if "audio" not in content_type and "octet-stream" not in content_type:
+                    logger.warning(f"🚫 {provider_url} — invalid content-type: BAN")
+                    await ProviderVerificationService._ban_async(
+                        provider_id, "Invalid content-type in response"
+                    )
+                    return None
+
+                if gen_response.seed != seed:
+                    logger.warning(f"🚫 {provider_url} — seed mismatch: BAN")
+                    await ProviderVerificationService._ban_async(
+                        provider_id, "Seed mismatch in verify response"
+                    )
+                    return None
+
+                return {
+                    "wav": response.content,
+                    "model": gen_response.model,
+                }
+
             except Exception as e:
                 logger.warning(f"Verify request error: {e}")
                 return None
+
+    @staticmethod
+    async def _ban_async(provider_id: int, reason: str) -> None:
+        from server.core.database import SessionLocal
+
+        ban_db = SessionLocal()
+        try:
+            ProviderVerificationService._ban_provider(ban_db, provider_id, reason)
+        finally:
+            ban_db.close()
 
     @staticmethod
     def _store_sample(
@@ -413,7 +404,6 @@ class ProviderVerificationService:
                 s_seed,
                 s_duration,
                 trusted.api_key,
-                trusted.encoded_server_auth_key,
             )
             if not result or not result.get("wav"):
                 logger.warning(f"  ⚠️  Trusted failed to generate sample '{s_prompt}'")
@@ -543,7 +533,6 @@ class ProviderVerificationService:
                         seed,
                         duration,
                         p.api_key,
-                        p.encoded_server_auth_key,
                     )
                 )
             except Exception as e:
@@ -1053,6 +1042,41 @@ class ProviderVerificationService:
                     "action": "llm_infer",
                     "system_prompt": "test",
                     "user_message": "x" * 9000,
+                },
+                422,
+            ),
+            (
+                "Invalid model value",
+                {
+                    "action": "generate",
+                    "prompt": "test",
+                    "duration": 10,
+                    "seed": 42,
+                    "model": "unknown-model",
+                },
+                422,
+            ),
+            (
+                "foundation-1 missing bpm",
+                {
+                    "action": "generate",
+                    "prompt": "test",
+                    "duration": 10,
+                    "seed": 42,
+                    "model": "foundation-1",
+                },
+                422,
+            ),
+            (
+                "foundation-1 invalid bars",
+                {
+                    "action": "generate",
+                    "prompt": "test",
+                    "duration": 10,
+                    "seed": 42,
+                    "model": "foundation-1",
+                    "bpm": 128,
+                    "bars": 3,
                 },
                 422,
             ),

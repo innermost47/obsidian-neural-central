@@ -194,11 +194,11 @@ class RetryEmailsRequest(BaseModel):
 
 class SupportedModel(str, Enum):
     STABLE_AUDIO = "stable-audio-open-1.0"
-    FOUNDATION_1 = "RoyalCities/Foundation-1"
+    FOUNDATION_1 = "foundation-1"
 
 
 class SupportedModelId(str, Enum):
-    STABLE_AUDIO_ID = "stabilityai/stable-audio-open-1.0"
+    STABLE_AUDIO = "stabilityai/stable-audio-open-1.0"
     FOUNDATION_1 = "RoyalCities/Foundation-1"
 
 
@@ -244,3 +244,20 @@ class ProviderGenerateResponse(BaseModel):
 
 class ActivateRequest(BaseModel):
     token: str
+
+
+class LLMConversationMessage(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    role: str
+    content: str
+
+
+class ProviderLLMResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    system_prompt: str
+    history: list[LLMConversationMessage]
+    user_message: str
+    response: str
+    model: str
+    provider_key: str
+    audio_model: Optional[SupportedModel] = None

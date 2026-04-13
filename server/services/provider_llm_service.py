@@ -3,10 +3,11 @@ import hashlib
 import math
 from datetime import datetime, timezone
 from typing import Optional, Dict, Any
-from pydantic import BaseModel, ConfigDict, ValidationError
+from pydantic import ValidationError
 from sqlalchemy.orm import Session
 from server.services.fal_service import FalService
 from server.core.database import Provider
+from server.api.models import LLMConversationMessage, ProviderLLMResponse
 from server.config import settings
 from server.services.provider_service import ProviderService
 import ollama
@@ -14,22 +15,6 @@ import ollama
 LLM_INFER_TIMEOUT = 120.0
 PING_TIMEOUT = 5.0
 COSINE_SIMILARITY_THRESHOLD = 0.60
-
-
-class LLMConversationMessage(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-    role: str
-    content: str
-
-
-class ProviderLLMResponse(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-    system_prompt: str
-    history: list[LLMConversationMessage]
-    user_message: str
-    response: str
-    model: str
-    provider_key: str
 
 
 def _cosine_similarity(a: list[float], b: list[float]) -> float:

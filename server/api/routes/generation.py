@@ -30,6 +30,8 @@ import json
 
 router = APIRouter(tags=["Generation"])
 
+DEFAULT_MODEL = "stable-audio-open-1.0"
+
 
 def clean_base64(base64_string: str) -> str:
     cleaned = re.sub(r"\s+", "", base64_string)
@@ -53,7 +55,26 @@ def _extract_json(text: str) -> str:
     return text.strip()
 
 
-async def _resolve_prompt(request, current_user, db) -> str:
+def _parse_llm_decision(decision: dict, request) -> dict:
+    sample = decision.get("parameters", {}).get("sample_details", {})
+    model = decision.get("model", DEFAULT_MODEL)
+    prompt = sample.get("prompt", request.prompt)
+    key = sample.get("key") or request.key
+    bpm = sample.get("bpm") or request.bpm
+    bars = sample.get("bars")
+    duration = sample.get("duration")
+
+    return {
+        "model": model,
+        "prompt": prompt,
+        "key": key,
+        "bpm": bpm,
+        "bars": bars,
+        "duration": duration,
+    }
+
+
+async def _resolve_prompt(request, current_user, db) -> dict:
     context = {"bpm": request.bpm, "key": request.key}
 
     if request.use_image and request.image_base64:
@@ -63,6 +84,7 @@ async def _resolve_prompt(request, current_user, db) -> str:
             image_bytes = base64.b64decode(cleaned_base64, validate=True)
         except Exception:
             image_bytes = base64.b64decode(cleaned_base64, validate=False)
+
         if not image_bytes.startswith(b"\x89PNG"):
             raise HTTPException(
                 status_code=400,
@@ -71,6 +93,7 @@ async def _resolve_prompt(request, current_user, db) -> str:
                     "message": "Image must be in PNG format",
                 },
             )
+
         if request.keywords:
             print(f"🏷️  Keywords: {', '.join(request.keywords)}")
 
@@ -85,7 +108,7 @@ CONTEXT:
             user_message += f"""
 - Additional keywords: {keywords_str}
 
-IMPORTANT: These user-selected keywords MUST be incorporated and emphasized in your musicgen_prompt."""
+IMPORTANT: These user-selected keywords MUST be incorporated and emphasized in your prompt."""
 
         user_message += "\n\nYour description must work within these constraints."
 
@@ -98,14 +121,9 @@ IMPORTANT: These user-selected keywords MUST be incorporated and emphasized in y
         )
 
         if result["success"]:
-            response_text = _extract_json(result["response"])
             try:
-                sonic_json = json.loads(response_text)
-                base_prompt = sonic_json["parameters"]["sample_details"][
-                    "musicgen_prompt"
-                ]
-                prompt = f"{request.bpm} BPM {base_prompt} {request.key}"
-                print(f"🎵 VLM prompt via {result['provider_name']}: {prompt}")
+                decision = json.loads(_extract_json(result["response"]))
+                parsed = _parse_llm_decision(decision, request)
                 FalService._save_message(
                     db,
                     current_user.id,
@@ -115,11 +133,12 @@ IMPORTANT: These user-selected keywords MUST be incorporated and emphasized in y
                 FalService._save_message(
                     db, current_user.id, "assistant", result["response"]
                 )
-                return prompt
-            except (json.JSONDecodeError, KeyError):
                 print(
-                    "⚠️ JSON parse error on provider response, falling back to fal.ai..."
+                    f"🎵 VLM prompt via {result['provider_name']} [{parsed['model']}]: {parsed['prompt']}"
                 )
+                return parsed
+            except (json.JSONDecodeError, KeyError) as e:
+                print(f"⚠️ JSON parse error: {e} — falling back to fal.ai...")
         else:
             print("⚠️ ProviderLLMService failed, falling back to fal.ai...")
 
@@ -132,7 +151,14 @@ IMPORTANT: These user-selected keywords MUST be incorporated and emphasized in y
             keywords=request.keywords,
         )
         print(f"🎵 VLM prompt via fal.ai fallback: {prompt}")
-        return prompt
+        return {
+            "model": DEFAULT_MODEL,
+            "prompt": prompt,
+            "bpm": request.bpm,
+            "key": request.key,
+            "bars": None,
+            "duration": int(request.generation_duration),
+        }
 
     elif request.use_image and not request.image_base64:
         raise HTTPException(
@@ -172,31 +198,35 @@ IMPORTANT: This new prompt has PRIORITY. If it's different from your previous ge
 
         if result["success"]:
             try:
-                response_text = _extract_json(result["response"])
-                decision = json.loads(response_text)
-                optimized_prompt = (
-                    decision.get("parameters", {})
-                    .get("sample_details", {})
-                    .get("musicgen_prompt", request.prompt)
-                )
+                decision = json.loads(_extract_json(result["response"]))
+                parsed = _parse_llm_decision(decision, request)
                 FalService._save_message(db, current_user.id, "user", user_message)
                 FalService._save_message(
                     db, current_user.id, "assistant", result["response"]
                 )
-                prompt = f"{request.bpm} BPM {optimized_prompt} {request.key}"
-                print(f"🎵 LLM prompt via {result['provider_name']}: {prompt}")
-                return prompt
+                print(
+                    f"🎵 LLM prompt via {result['provider_name']} [{parsed['model']}]: {parsed['prompt']}"
+                )
+                return parsed
             except (json.JSONDecodeError, KeyError) as e:
                 print(f"⚠️ JSON parse error: {e} — raw: {result['response'][:500]}")
         else:
             print("⚠️ ProviderLLMService failed, falling back to fal.ai...")
 
-        return await FalService.optimize_prompt_with_llm(
+        prompt = await FalService.optimize_prompt_with_llm(
             request.prompt,
             context=context,
             user_id=current_user.id,
             db=db,
         )
+        return {
+            "model": DEFAULT_MODEL,
+            "prompt": prompt,
+            "bpm": request.bpm,
+            "key": request.key,
+            "bars": None,
+            "duration": int(request.generation_duration),
+        }
 
 
 @router.post("/generate")
@@ -230,20 +260,26 @@ async def generate_audio(
                     },
                 )
 
-        final_prompt = await _resolve_prompt(request, current_user, db)
+        resolved = await _resolve_prompt(request, current_user, db)
 
         result = await ProviderService.generate_audio(
-            prompt=final_prompt,
-            duration=int(request.generation_duration),
+            prompt=resolved["prompt"],
+            duration=resolved["duration"] or int(request.generation_duration),
             user_id=current_user.id,
             db=db,
             public_user_id=current_user.public_id,
+            model=resolved["model"],
+            bpm=resolved["bpm"],
+            bars=resolved["bars"],
+            key=resolved["key"],
         )
+
         if not result["success"]:
             raise HTTPException(status_code=500, detail=result["error"])
 
         print(
             f"🎛️  Generation via: {result.get('provider_name', 'unknown')} "
+            f"[{resolved['model']}] "
             f"({'fallback' if result.get('used_fallback') else 'provider'})"
         )
 
@@ -253,13 +289,27 @@ async def generate_audio(
         audio_data = await fetch_audio_bytes(result)
         audio, sr = await load_and_resample(audio_data, target_sr)
         audio = applicate_lite_fade_in_fade_out(audio, sr)
-        detected_bpm = await detect_bpm(audio, sr)
-        audio = stretch_audio_to_bpm(audio, sr, detected_bpm, float(request.bpm))
+
+        if resolved["model"] == "stable-audio-open-1.0":
+            detected_bpm = await detect_bpm(audio, sr)
+            audio = stretch_audio_to_bpm(
+                audio, sr, detected_bpm, float(resolved["bpm"])
+            )
+        else:
+            snapped_bpm = result.get("snapped_bpm")
+            detected_bpm = float(snapped_bpm) if snapped_bpm else None
+            if snapped_bpm and int(snapped_bpm) != int(resolved["bpm"]):
+                audio = stretch_audio_to_bpm(
+                    audio, sr, float(snapped_bpm), float(resolved["bpm"])
+                )
+
         wav_bytes, duration = audio_to_wav_bytes(audio, sr)
 
         generation_details = {
             "prompt": request.prompt,
-            "bpm": request.bpm,
+            "model": resolved["model"],
+            "bpm": resolved["bpm"],
+            "key": resolved["key"],
             "duration": request.generation_duration,
         }
         if not current_user.is_admin:
@@ -280,16 +330,16 @@ async def generate_audio(
                 commit=True,
             )
 
-        print(f"✅ Audio généré: {duration:.1f}s @ {target_sr}Hz")
+        print(f"✅ Audio généré: {duration:.1f}s @ {target_sr}Hz [{resolved['model']}]")
 
         return Response(
             content=wav_bytes,
             media_type="audio/wav",
             headers=build_response_headers(
                 duration=duration,
-                request_bpm=request.bpm,
+                request_bpm=resolved["bpm"],
                 detected_bpm=detected_bpm,
-                key=request.key,
+                key=resolved["key"],
                 remaining_after=remaining_after,
                 credits_needed=credits_needed,
                 target_sr=target_sr,
