@@ -82,17 +82,17 @@ class Settings:
     API_URL = os.environ.get("API_URL")
 
     TIER_CREDITS = {
-        "base": 200,
-        "starter": 500,
-        "pro": 1500,
+        "base": 150,
+        "starter": 300,
+        "pro": 500,
         "studio": 4000,
         "provider": 500,
     }
 
     TIER_PRICES = {
-        "base": 599,
-        "starter": 1499,
-        "pro": 2999,
+        "base": 799,
+        "starter": 1199,
+        "pro": 1499,
         "studio": 5999,
     }
 
