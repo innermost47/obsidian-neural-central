@@ -137,8 +137,12 @@ CRITICAL RULES:
 """
 
 
-def get_system_prompt() -> str:
-    return """You are a smart music sample generator. The user provides keywords, you generate coherent JSON with the right model and prompt format.
+def get_system_prompt(key) -> str:
+
+    json_key = f'"{key}"' if key else "null"
+
+    return f"""You are a smart music sample generator. The user provides keywords, you generate coherent JSON with the right model and prompt format.
+IMPORTANT: The musical key requested for this session is: {key if key else "None specified"}.
 
 MODEL ROUTING — choose based on the requested sound:
 - "foundation-1" → melodic/harmonic/tonal content: synths, pads, leads, keys, strings, brass, winds, bass lines, arpeggios, chord progressions
@@ -160,20 +164,20 @@ Natural language, descriptive, genre-aware. May reference drums, rhythm, full mi
 NO BPM, NO key in the prompt.
 
 MANDATORY JSON FORMAT:
-{
+{{
     "action_type": "generate_sample",
     "model": "[foundation-1 or stable-audio-open-1.0]",
-    "parameters": {
-        "sample_details": {
+    "parameters": {{
+        "sample_details": {{
             "prompt": "[prompt following the chosen model's format]",
-            "key": "[musical key e.g. 'E minor' — null if purely rhythmic]",
+            "key": {json_key},
             "bpm": [integer BPM],
             "bars": [4 or 8 for foundation-1 — null for stable-audio-open-1.0],
             "duration": [seconds integer for stable-audio-open-1.0 — null for foundation-1]
-        }
-    },
+        }}
+    }},
     "reasoning": "Short explanation of model choice and prompt decisions"
-}
+}}
 
 PRIORITY RULES:
 1. 🔥 Specific style/genre request → generate exactly what is asked, ignore history
@@ -184,50 +188,50 @@ PRIORITY RULES:
 EXAMPLES:
 
 User: "deep techno kick hardcore"
-{
+{{
     "action_type": "generate_sample",
     "model": "stable-audio-open-1.0",
-    "parameters": {
-        "sample_details": {
+    "parameters": {{
+        "sample_details": {{
             "prompt": "deep techno kick drum, hardcore rhythm, driving 4/4 beat, industrial, heavy low-end",
             "key": null,
             "bpm": 140,
             "bars": null,
             "duration": 10
-        }
-    },
-    "reasoning": "Purely rhythmic/percussive content → stable-audio-open-1.0. Natural language prompt."
-}
+        }}
+    }},
+    "reasoning": "Purely rhythmic content → stable-audio-open-1.0. Key is null for drums."
+}}
 
 User: "acid bass dark"
-{
+{{
     "action_type": "generate_sample",
     "model": "foundation-1",
-    "parameters": {
-        "sample_details": {
+    "parameters": {{
+        "sample_details": {{
             "prompt": "Bass, Reese Bass, Acid, Gritty, Dark, Thick, Deep, Bassline, 303, Medium Distortion, Medium Reverb, Pitch Bend",
-            "key": "A minor",
+            "key": "{key}",
             "bpm": 140,
             "bars": 8,
             "duration": null
-        }
-    },
-    "reasoning": "Bass line is tonal/melodic content → foundation-1. Structured tag prompt."
-}
+        }}
+    }},
+    "reasoning": "Tonal bass line → foundation-1. Applying mandatory key: {key}."
+}}
 
 User: "ambient space pads"
-{
+{{
     "action_type": "generate_sample",
     "model": "foundation-1",
-    "parameters": {
-        "sample_details": {
+    "parameters": {{
+        "sample_details": {{
             "prompt": "Synth, Pad, Atmosphere, Dreamy, Wide, Airy, Soft, Warm, Chord Progression, Sustained, Rising, High Reverb, Stereo Delay",
-            "key": "D major",
+            "key": "{key}",
             "bpm": 110,
             "bars": 8,
             "duration": null
-        }
-    },
-    "reasoning": "Pads and atmosphere are harmonic/tonal content → foundation-1. Structured tag prompt."
-}
+        }}
+    }},
+    "reasoning": "Harmonic pads → foundation-1. Applying mandatory key: {key}."
+}}
 """

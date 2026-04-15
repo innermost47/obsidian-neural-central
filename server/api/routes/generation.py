@@ -172,7 +172,9 @@ IMPORTANT: These user-selected keywords MUST be incorporated and emphasized in y
     else:
         print("📝 Text-to-audio mode")
 
-        history = FalService._get_conversation_history(db, current_user.id)
+        history = FalService._get_conversation_history(
+            db, current_user.id, key=request.key
+        )
         llm_messages = [
             LLMConversationMessage(role=m["role"], content=m["content"])
             for m in history
@@ -189,7 +191,7 @@ Context:
 IMPORTANT: This new prompt has PRIORITY. If it's different from your previous generation, ABANDON the previous style completely and focus on this new prompt."""
 
         result = await ProviderLLMService.infer(
-            system_prompt=get_system_prompt(),
+            system_prompt=get_system_prompt(key=request.key),
             history=llm_messages,
             user_message=user_message,
             image_base64=None,
@@ -218,6 +220,7 @@ IMPORTANT: This new prompt has PRIORITY. If it's different from your previous ge
             context=context,
             user_id=current_user.id,
             db=db,
+            key=request.key,
         )
         return {
             "model": DEFAULT_MODEL,

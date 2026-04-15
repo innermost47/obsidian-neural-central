@@ -16,7 +16,9 @@ class FalService:
     MAX_MESSAGES_PER_USER = 10
 
     @staticmethod
-    def _get_conversation_history(db: Session, user_id: int) -> List[Dict[str, str]]:
+    def _get_conversation_history(
+        db: Session, user_id: int, key: str
+    ) -> List[Dict[str, str]]:
         from server.core.database import ConversationMessage
 
         messages = (
@@ -32,7 +34,7 @@ class FalService:
 
         messages.reverse()
 
-        history = [{"role": "system", "content": get_system_prompt()}]
+        history = [{"role": "system", "content": get_system_prompt(key=key)}]
 
         for msg in messages:
             history.append({"role": msg.role, "content": msg.content})
@@ -80,11 +82,11 @@ class FalService:
 
     @staticmethod
     async def optimize_prompt_with_llm(
-        user_prompt: str, context: Dict, user_id: int, db: Session
+        user_prompt: str, context: Dict, user_id: int, db: Session, key: str
     ) -> str:
         async with EXTERNAL_API_SEMAPHORE:
             try:
-                history = FalService._get_conversation_history(db, user_id)
+                history = FalService._get_conversation_history(db, user_id, key=key)
 
                 user_message = f"""⚠️ NEW USER PROMPT ⚠️
 Keywords: {user_prompt}
