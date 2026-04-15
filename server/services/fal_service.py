@@ -86,7 +86,7 @@ class FalService:
     ) -> str:
         async with EXTERNAL_API_SEMAPHORE:
             try:
-                history = FalService._get_conversation_history(db, user_id, key=key)
+                history = [{"role": "system", "content": get_system_prompt(key=key)}]
 
                 user_message = f"""⚠️ NEW USER PROMPT ⚠️
 Keywords: {user_prompt}

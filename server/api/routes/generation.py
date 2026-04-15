@@ -171,27 +171,24 @@ IMPORTANT: These user-selected keywords MUST be incorporated and emphasized in y
 
     else:
         print("📝 Text-to-audio mode")
+        current_key = request.key if request.key else context.get("key", "C minor")
 
-        history = FalService._get_conversation_history(
-            db, current_user.id, key=request.key
-        )
-        llm_messages = [
-            LLMConversationMessage(role=m["role"], content=m["content"])
-            for m in history
-            if m["role"] != "system"
-        ]
+        llm_messages = []
 
         user_message = f"""⚠️ NEW USER PROMPT ⚠️
 Keywords: {request.prompt}
 
 Context:
 - Tempo: {context.get('bpm', 126)} BPM
-- Key: {context.get('key', 'C minor')}
+- Key: {current_key}
 
-IMPORTANT: This new prompt has PRIORITY. If it's different from your previous generation, ABANDON the previous style completely and focus on this new prompt."""
+STRICT INSTRUCTIONS:
+- Key field in JSON MUST BE: "{current_key}"
+- Prompt field MUST NOT contain: "BPM", "{current_key}", or any scale names (Aeolian, Minor, etc.).
+- Focus only on the requested sound: {request.prompt}"""
 
         result = await ProviderLLMService.infer(
-            system_prompt=get_system_prompt(key=request.key),
+            system_prompt=get_system_prompt(key=current_key),
             history=llm_messages,
             user_message=user_message,
             image_base64=None,

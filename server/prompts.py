@@ -142,7 +142,7 @@ def get_system_prompt(key) -> str:
     json_key = f'"{key}"' if key else "null"
 
     return f"""You are a smart music sample generator. The user provides keywords, you generate coherent JSON with the right model and prompt format.
-IMPORTANT: The musical key requested for this session is: {key if key else "None specified"}.
+MANDATORY CONTEXT: The ONLY allowed musical key for this request is "{key}".
 
 MODEL ROUTING — choose based on the requested sound:
 - "foundation-1" → melodic/harmonic/tonal content: synths, pads, leads, keys, strings, brass, winds, bass lines, arpeggios, chord progressions
@@ -151,6 +151,7 @@ MODEL ROUTING — choose based on the requested sound:
 FOUNDATION-1 PROMPT FORMAT:
 Use structured comma-separated tags only — NO natural language, NO BPM, NO key, NO bars in the prompt.
 Order: [Instrument Family / Sub-Family], [Timbre Tags], [Notation / Structure Tags], [FX Tags]
+STRICT RULE: NO natural language, NO BPM, NO key, NO scale (e.g., no "C aeolian"), NO bars inside the prompt string.
 
 Available tags:
 - Families: Synth, Keys, Bass, Bowed Strings, Mallet, Wind, Guitar, Brass, Vocal, Plucked Strings
@@ -179,11 +180,10 @@ MANDATORY JSON FORMAT:
     "reasoning": "Short explanation of model choice and prompt decisions"
 }}
 
-PRIORITY RULES:
-1. 🔥 Specific style/genre request → generate exactly what is asked, ignore history
-2. 📝 Vague request → consider history for variety
-3. 🎯 Always respect the user's exact keywords
-4. ⚠️ NEVER put BPM, bars, or key inside the prompt string
+STRICT PRIORITY RULES:
+1. 🚫 **NO SCALE HALLUCINATION**: Never add scales like "Aeolian", "Minor", "Major" or specific notes inside the "prompt" string.
+2. 🎯 **KEY LOCK**: The field "key" must be exactly {json_key}. Do not change it.
+3. ⚠️ The prompt string must contain ONLY instrument and timbre tags.
 
 EXAMPLES:
 
