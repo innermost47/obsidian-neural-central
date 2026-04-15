@@ -236,6 +236,7 @@ async def generate_audio(
     db: Session = Depends(get_db),
 ):
     try:
+        print(f"Request.key: {request.key}")
         if not request.use_image and (
             not request.prompt or request.prompt.strip() == ""
         ):
