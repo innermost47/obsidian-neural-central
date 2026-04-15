@@ -262,7 +262,9 @@ class ProviderService:
                 db.commit()
 
             print(
-                f"🎵 Sending generation to provider: {provider['name']} [{model}] - Prompt: {prompt}"
+                f"🎵 Sending to: {provider['name']} | Model: {model}\n"
+                f"   Prompt: {prompt}\n"
+                f"   Parameters: [Key: {key} | BPM: {bpm} | Bars: {bars}]"
             )
 
             seed = random.randint(0, 2**31 - 1)
