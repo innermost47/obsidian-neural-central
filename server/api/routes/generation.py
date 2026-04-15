@@ -246,6 +246,7 @@ async def generate_audio(
                     "message": "Prompt is required for text-to-audio generation",
                 },
             )
+        request.key = request.key.replace("Aeolian", "minor").replace("Ionian", "major")
         print(f"DEBUG 1 [VST IN]: Key='{request.key}', BPM={request.bpm}")
         credits_needed = 1
         remaining_after = 0
