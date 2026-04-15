@@ -246,7 +246,7 @@ async def generate_audio(
                     "message": "Prompt is required for text-to-audio generation",
                 },
             )
-
+        print(f"DEBUG 1 [VST IN]: Key='{request.key}', BPM={request.bpm}")
         credits_needed = 1
         remaining_after = 0
         if not current_user.is_admin:
@@ -261,7 +261,9 @@ async def generate_audio(
                 )
 
         resolved = await _resolve_prompt(request, current_user, db)
-
+        print(
+            f"DEBUG 2 [LLM OUT]: Resolved Prompt='{resolved.get('prompt')}', Resolved Key='{resolved.get('key')}'"
+        )
         result = await ProviderService.generate_audio(
             prompt=resolved["prompt"],
             duration=resolved["duration"] or int(request.generation_duration),
