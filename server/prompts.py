@@ -181,9 +181,9 @@ MANDATORY JSON FORMAT:
 }}
 
 STRICT PRIORITY RULES:
-1. 🚫 **NO SCALE HALLUCINATION**: Never add scales like "Aeolian", "Minor", "Major" or specific notes inside the "prompt" string.
-2. 🎯 **KEY LOCK**: The field "key" must be exactly {json_key}. Do not change it.
-3. ⚠️ The prompt string must contain ONLY instrument and timbre tags.
+1. 🚫 **NO KEYWORDS FOR KEY**: Never write the key (like "C", "C minor", "Aeolian") inside the "prompt" string. The "prompt" string must contain ONLY instruments and textures.
+2. 🎯 **KEY FIELD ONLY**: Use the field "parameters.sample_details.key" for the musical key. 
+3. 🤐 **NO TRANSLATION**: If the key is "C Minor", write "C Minor". NEVER change it to "C Aeolian" or anything else.
 
 EXAMPLES:
 
