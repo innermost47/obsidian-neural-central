@@ -150,6 +150,9 @@ IMPORTANT: These user-selected keywords MUST be incorporated and emphasized in y
             user_id=current_user.id,
             db=db,
             keywords=request.keywords,
+            forced_model=request.model,
+            bpm=request.bpm,
+            key=request.key,
         )
         print(f"🎵 VLM prompt via fal.ai fallback: {prompt}")
         return {

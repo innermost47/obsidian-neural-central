@@ -7,7 +7,7 @@ import os
 import json
 import re
 from server.core.concurrency import EXTERNAL_API_SEMAPHORE
-from server.prompts import MUSICAL_VISION_SYSTEM_PROMPT, get_system_prompt
+from server.prompts import get_vision_system_prompt, get_system_prompt
 
 os.environ["FAL_KEY"] = settings.FAL_KEY
 
@@ -170,11 +170,17 @@ IMPORTANT: This new prompt has PRIORITY. If it's different from your previous ge
         scale: str,
         user_id: int,
         db: Session,
+        forced_model: str,
+        key: str,
         keywords=None,
+        system_prompt=None,
     ) -> str:
         async with EXTERNAL_API_SEMAPHORE:
             try:
-                system_prompt = MUSICAL_VISION_SYSTEM_PROMPT
+                if not system_prompt:
+                    system_prompt = get_vision_system_prompt(
+                        forced_model=forced_model, key=key, bpm=bpm
+                    )
 
                 user_message = f"""Translate this image into a sonic/musical description.
 

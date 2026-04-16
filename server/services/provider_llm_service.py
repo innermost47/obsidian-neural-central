@@ -245,6 +245,7 @@ class ProviderLLMService:
                     scale="",
                     user_id=0,
                     db=None,
+                    system_prompt=system_prompt,
                 )
                 return {
                     "success": True,
