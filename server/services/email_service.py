@@ -4,7 +4,6 @@ from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from sqlalchemy.orm import Session
 from datetime import datetime, timezone
-
 from server.config import settings
 from server.templates.email_template import (
     base_template,
@@ -15,6 +14,10 @@ from server.templates.email_template import (
     section_title,
     download_buttons,
 )
+
+from concurrent.futures import ThreadPoolExecutor
+
+executor = ThreadPoolExecutor(max_workers=5)
 
 logger = logging.getLogger(__name__)
 
@@ -39,10 +42,12 @@ class EmailService:
         user_id: int = None,
         db: Session = None,
     ) -> bool:
-        from server.core.database import EmailLog, EmailLogStatus
+        def _execute_dispatch():
+            from server.core.database import EmailLog, EmailLogStatus, SessionLocal
 
-        email_log_id = None
-        if db:
+            worker_db = SessionLocal()
+            email_log_id = None
+
             try:
                 email_log = EmailLog(
                     recipient_email=to_email,
@@ -53,50 +58,56 @@ class EmailService:
                     user_id=user_id,
                     created_at=datetime.now(timezone.utc),
                 )
-                db.add(email_log)
-                db.commit()
-                db.refresh(email_log)
+                worker_db.add(email_log)
+                worker_db.commit()
+                worker_db.refresh(email_log)
                 email_log_id = email_log.id
-            except Exception as e:
-                logger.warning(f"Error logging email: {e}")
 
-        try:
-            msg = MIMEMultipart("alternative")
-            msg["Subject"] = subject
-            msg["From"] = settings.SMTP_FROM_EMAIL
-            msg["To"] = to_email
-            msg.attach(MIMEText(html_body, "html", "utf-8"))
+                msg = MIMEMultipart("alternative")
+                msg["Subject"] = subject
+                msg["From"] = settings.SMTP_FROM_EMAIL
+                msg["To"] = to_email
+                msg.attach(MIMEText(html_body, "html", "utf-8"))
 
-            with smtplib.SMTP_SSL(
-                settings.SMTP_HOST, settings.SMTP_PORT, timeout=30
-            ) as server:
-                server.login(settings.SMTP_USERNAME, settings.SMTP_PASSWORD)
-                server.send_message(msg)
+                with smtplib.SMTP_SSL(
+                    settings.SMTP_HOST, settings.SMTP_PORT, timeout=30
+                ) as server:
+                    server.login(settings.SMTP_USERNAME, settings.SMTP_PASSWORD)
+                    server.send_message(msg)
 
-            logger.info(f"✅ Email sent to {to_email} [{email_type}]")
-
-            if db and email_log_id:
-                log = db.query(EmailLog).filter(EmailLog.id == email_log_id).first()
+                log = (
+                    worker_db.query(EmailLog)
+                    .filter(EmailLog.id == email_log_id)
+                    .first()
+                )
                 if log:
                     log.status = EmailLogStatus.SENT
                     log.sent_at = datetime.now(timezone.utc)
-                    log.error_message = None
-                    db.commit()
-            return True
+                    worker_db.commit()
 
-        except Exception as e:
-            logger.error(f"❌ Failed to send email to {to_email}: {e}")
-            if db and email_log_id:
-                try:
-                    log = db.query(EmailLog).filter(EmailLog.id == email_log_id).first()
-                    if log:
-                        log.status = EmailLogStatus.FAILED
-                        log.error_message = str(e)
-                        log.last_retry_at = datetime.now(timezone.utc)
-                        db.commit()
-                except Exception:
-                    pass
-            return False
+                logger.info(f"✅ Background Email sent to {to_email}")
+
+            except Exception as e:
+                logger.error(f"❌ Background Email failed: {e}")
+                if email_log_id:
+                    try:
+                        log = (
+                            worker_db.query(EmailLog)
+                            .filter(EmailLog.id == email_log_id)
+                            .first()
+                        )
+                        if log:
+                            log.status = EmailLogStatus.FAILED
+                            log.error_message = str(e)
+                            worker_db.commit()
+                    except:
+                        pass
+            finally:
+                worker_db.close()
+
+        executor.submit(_execute_dispatch)
+
+        return True
 
     @staticmethod
     def send_welcome_email(
