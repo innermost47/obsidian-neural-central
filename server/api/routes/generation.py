@@ -18,9 +18,8 @@ from server.services.provider_service import ProviderService
 from server.services.credits_service import CreditsService
 from server.services.provider_llm_service import (
     ProviderLLMService,
-    LLMConversationMessage,
 )
-from server.prompts import MUSICAL_VISION_SYSTEM_PROMPT, get_system_prompt
+from server.prompts import get_vision_system_prompt, get_system_prompt
 import re
 import base64
 import asyncio
@@ -74,7 +73,7 @@ def _parse_llm_decision(decision: dict, request) -> dict:
     }
 
 
-async def _resolve_prompt(request, current_user, db) -> dict:
+async def _resolve_prompt(request: GenerateRequest, current_user, db) -> dict:
     context = {"bpm": request.bpm, "key": request.key}
 
     if request.use_image and request.image_base64:
@@ -113,7 +112,9 @@ IMPORTANT: These user-selected keywords MUST be incorporated and emphasized in y
         user_message += "\n\nYour description must work within these constraints."
 
         result = await ProviderLLMService.infer(
-            system_prompt=MUSICAL_VISION_SYSTEM_PROMPT,
+            system_prompt=get_vision_system_prompt(
+                forced_model=request.model, key=request.key, bpm=request.bpm
+            ),
             history=[],
             user_message=user_message,
             image_base64=cleaned_base64,
@@ -188,7 +189,9 @@ STRICT INSTRUCTIONS:
 - Focus only on the requested sound: {request.prompt}"""
 
         result = await ProviderLLMService.infer(
-            system_prompt=get_system_prompt(key=current_key),
+            system_prompt=get_system_prompt(
+                key=current_key, forced_model=request.model, bpm=request.bpm
+            ),
             history=llm_messages,
             user_message=user_message,
             image_base64=None,
@@ -218,6 +221,8 @@ STRICT INSTRUCTIONS:
             user_id=current_user.id,
             db=db,
             key=request.key,
+            forced_model=request.model,
+            bpm=request.bpm,
         )
         return {
             "model": DEFAULT_MODEL,
@@ -273,7 +278,7 @@ async def generate_audio(
             user_id=current_user.id,
             db=db,
             public_user_id=current_user.public_id,
-            model=resolved["model"],
+            model=request.model,
             bpm=resolved["bpm"],
             bars=resolved["bars"],
             key=request.key,

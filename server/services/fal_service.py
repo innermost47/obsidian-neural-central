@@ -16,32 +16,6 @@ class FalService:
     MAX_MESSAGES_PER_USER = 10
 
     @staticmethod
-    def _get_conversation_history(
-        db: Session, user_id: int, key: str
-    ) -> List[Dict[str, str]]:
-        from server.core.database import ConversationMessage
-
-        messages = (
-            db.query(ConversationMessage)
-            .filter(
-                ConversationMessage.user_id == user_id,
-                ConversationMessage.role != "system",
-            )
-            .order_by(desc(ConversationMessage.created_at))
-            .limit(FalService.MAX_MESSAGES_PER_USER)
-            .all()
-        )
-
-        messages.reverse()
-
-        history = [{"role": "system", "content": get_system_prompt(key=key)}]
-
-        for msg in messages:
-            history.append({"role": msg.role, "content": msg.content})
-
-        return history
-
-    @staticmethod
     def _save_message(db: Session, user_id: int, role: str, content: str):
         from server.core.database import ConversationMessage
 
@@ -82,11 +56,24 @@ class FalService:
 
     @staticmethod
     async def optimize_prompt_with_llm(
-        user_prompt: str, context: Dict, user_id: int, db: Session, key: str
+        user_prompt: str,
+        context: Dict,
+        user_id: int,
+        db: Session,
+        key: str,
+        forced_model: str,
+        bpm: float,
     ) -> str:
         async with EXTERNAL_API_SEMAPHORE:
             try:
-                history = [{"role": "system", "content": get_system_prompt(key=key)}]
+                history = [
+                    {
+                        "role": "system",
+                        "content": get_system_prompt(
+                            key=key, forced_model=forced_model, bpm=bpm
+                        ),
+                    }
+                ]
 
                 user_message = f"""⚠️ NEW USER PROMPT ⚠️
 Keywords: {user_prompt}
