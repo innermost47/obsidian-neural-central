@@ -247,7 +247,9 @@ async def generate_audio(
                 },
             )
         request.key = request.key.replace("Aeolian", "minor").replace("Ionian", "major")
-         print(f"DEBUG 1 [VST IN]: Key='{request.key}', BPM={request.bpm}, Model='{request.model}'")
+        print(
+            f"DEBUG 1 [VST IN]: Key='{request.key}', BPM={request.bpm}, Model='{request.model}'"
+        )
         credits_needed = 1
         remaining_after = 0
         if not current_user.is_admin:
