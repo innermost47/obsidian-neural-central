@@ -47,14 +47,26 @@ FastAPI central server
 
 ### Provider Capabilities
 
-Each provider runs two inference stacks:
+Each provider node acts as a **Multi-Engine AI Workstation**. The central server dynamically routes requests to one of the 8 specialized models selected by the musician in the VST.
 
-| Stack | Model                               | Purpose                                         |
-| ----- | ----------------------------------- | ----------------------------------------------- |
-| Audio | `stabilityai/stable-audio-open-1.0` | WAV generation from text prompts                |
-| LLM   | `gemma4:e2b` via Ollama             | Prompt optimization + drawing-to-sound analysis |
+| Stack     | Engines (Specialized Models) | Purpose / Musical Specialty                          |
+| :-------- | :--------------------------- | :--------------------------------------------------- |
+| **Audio** | **Stable Audio Open 1.0**    | General purpose foundation for full-mix and loops.   |
+|           | **Foundation-1**             | Surgical tag-based melodic & harmonic control.       |
+|           | **Audialab EDM Elements**    | High-energy leads, supersaws, and plucks.            |
+|           | **RC Infinite Pianos**       | High-fidelity grand and electric piano performances. |
+|           | **RC Vocal Textures**        | Choral and operatic vocal progressions.              |
+|           | **SAO Instrumental**         | Modern indie, rock, and lofi stems.                  |
+|           | **StableBeaT**               | Advanced trap drum machine and 808 grooves.          |
+|           | **Gluten-V1**                | Melodic loops for trap and wavy motifs.              |
+| **LLM**   | **Gemma 4** (via Ollama)     | Dynamic Prompt Injection & Vision Analysis.          |
 
-Providers are **mutually exclusive** — a provider busy with audio cannot accept an LLM request and vice versa. The availability flag returned in `/process?action=status` reflects both states simultaneously.
+#### 🧠 Smart Orchestration Features
+
+- **Dynamic Weight Switching:** Providers load specific `.safetensors` files on-demand. The system includes an optimized VRAM management layer that flushes and caches weights to ensure fast switching between models.
+- **Auto-Config Engine:** To guarantee studio-grade results, the provider automatically extracts optimal generation parameters (`Steps`, `CFG Scale`, `Conditioning Duration`) directly from each model's internal `model_config.json`.
+- **Prompt Grammars:** The LLM layer automatically adapts the user's natural language into the specific technical syntax required by the target model (e.g., Comma-separated Tags for _Foundation-1_, Pipe-separated fields for _Gluten_, or Descriptive Prose for _Stable Audio_).
+- **Mutual Exclusion:** To ensure stability and maximum VRAM availability, providers process only one task at a time (Audio or LLM). Availability states are synchronized in real-time with the central server via WebSockets.
 
 ---
 
