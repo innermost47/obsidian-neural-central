@@ -33,7 +33,20 @@ class Token(BaseModel):
     requires_2fa: Optional[bool] = False
 
 
+class AIModelName(str, Enum):
+    STABLE_AUDIO = "stable-audio-open-1.0"
+    FOUNDATION = "foundation-1"
+    EDM = "audialab-edm-elements"
+    PIANOS = "rc-infinite-pianos"
+    VOCALS = "rc-vocal-textures"
+    INSTRUMENTAL = "sao-instrumental"
+    STABLEBEAT = "stablebeat"
+    GLUTEN = "gluten-v1"
+
+
 class GenerateRequest(BaseModel):
+    model: AIModelName = Field(default=AIModelName.STABLE_AUDIO)
+
     prompt: Optional[str] = None
     bpm: float
     key: Optional[str] = None
@@ -45,7 +58,11 @@ class GenerateRequest(BaseModel):
     image_temperature: Optional[float] = 0.7
     keywords: Optional[List[str]] = []
 
-    model_config = {"protected_namespaces": ()}
+    model_config = ConfigDict(
+        protected_namespaces=(),
+        extra="forbid",
+        use_enum_values=True,
+    )
 
 
 class SubscriptionRequest(BaseModel):
