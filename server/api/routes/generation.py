@@ -300,8 +300,8 @@ async def generate_audio(
         )
         audio_data = await fetch_audio_bytes(result)
         audio, original_sr = await load_audio_original(audio_data)
-
-        if resolved["model"] == "stable-audio-open-1.0":
+        IMPRECISE_MODELS = ["stable-audio-open-1.0", "stablebeat", "sao-instrumental"]
+        if resolved["model"] == IMPRECISE_MODELS:
             detected_bpm = await detect_bpm(
                 audio, original_sr, expected_bpm=float(resolved["bpm"])
             )

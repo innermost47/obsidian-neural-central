@@ -78,6 +78,8 @@ EMOTIONAL MAPPING:
 
 {model_specific_rules}
 
+CRITICAL: You must faithfully incorporate the user's original intent and creative keywords into the final output, ensuring their specific artistic request is never ignored or overwritten by the model's technical tags.
+
 OUTPUT FORMAT (MANDATORY JSON):
 You MUST respond with ONLY valid JSON in this exact structure:
 {{
@@ -123,6 +125,8 @@ MANDATORY CONTEXT:
 - Forced Model: "{forced_model}"
 - Mandatory Musical Key: "{key if key else "null"}"
 - Mandatory BPM: {bpm}
+
+CRITICAL: You must faithfully incorporate the user's original intent and creative keywords into the final output, ensuring their specific artistic request is never ignored or overwritten by the model's technical tags.
 
 {model_specific_rules}
 

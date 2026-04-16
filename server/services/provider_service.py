@@ -422,9 +422,10 @@ class ProviderService:
                     job.error_message = "Timeout waiting for provider"
                     db.commit()
 
-        if model == "foundation-1":
+        if model != "stable-audio-open-1.0":
             print(
-                "🔄 No Foundation-1 provider available, falling back to fal.ai (stable-audio)..."
+                f"🔄 No specialized provider available for model '{model}', "
+                f"falling back to fal.ai (stable-audio-open-1.0)..."
             )
         else:
             print("🔄 Falling back to fal.ai...")
