@@ -181,40 +181,13 @@ def sanitize_header(value: str) -> str:
     return value.encode("latin-1", errors="replace").decode("latin-1")
 
 
-import io
-import librosa
-import soundfile as sf
-import numpy as np
-
-
 async def fetch_audio_bytes(result: dict) -> bytes:
-    raw_content = None
     if "wav_bytes" in result:
-        raw_content = result["wav_bytes"]
-    else:
-        async with httpx.AsyncClient(timeout=60.0) as client:
-            response = await client.get(result["audio_url"])
-            response.raise_for_status()
-            raw_content = response.content
-    try:
-        audio_data, sr = librosa.load(io.BytesIO(raw_content), sr=None, mono=False)
-        trimmed_audio, _ = librosa.effects.trim(
-            audio_data, top_db=45, frame_length=512, hop_length=128
-        )
-        buffer = io.BytesIO()
-        sf.write(
-            buffer,
-            trimmed_audio.T if trimmed_audio.ndim > 1 else trimmed_audio,
-            sr,
-            format="WAV",
-        )
-
-        print("✂️ Silence trimmed at the start of the sample.")
-        return buffer.getvalue()
-
-    except Exception as e:
-        print(f"⚠️ Error while trimming silence: {e}")
-        return raw_content
+        return result["wav_bytes"]
+    async with httpx.AsyncClient(timeout=60.0) as client:
+        response = await client.get(result["audio_url"])
+        response.raise_for_status()
+        return response.content
 
 
 def build_response_headers(
