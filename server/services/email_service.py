@@ -857,7 +857,7 @@ class EmailService:
         {btn_primary("Claim my free month →", f"{settings.FRONTEND_URL}/pricing.html")}
 
         <p style="color:#4a4a4a;font-size:13px;margin:16px 0 0;line-height:1.6;">
-          ✓ Cancel anytime &nbsp;&nbsp; ✓ All premium features &nbsp;&nbsp; ✓ Unlimited real-time generation
+          ✓ Cancel anytime &nbsp;&nbsp; ✓ All premium features &nbsp;&nbsp; ✓ Unlimited AI generation
         </p>
         <p style="color:#4a4a4a;font-size:14px;margin:24px 0 0;line-height:1.6;">
           Questions? Just reply &mdash; I'll get back to you directly.

@@ -14,7 +14,7 @@
 
 ### Overview
 
-OBSIDIAN Neural runs on a distributed GPU provider network. Each provider makes their GPU available for real-time audio generation and LLM inference. Subscription revenue is redistributed **strictly equally** among all eligible providers each month via Stripe Connect, after deduction of a transparent platform fee covering infrastructure costs (fal.ai, hosting, maintenance).
+OBSIDIAN Neural runs on a distributed GPU provider network. Each provider makes their GPU available for audio generation and LLM inference. Subscription revenue is redistributed **strictly equally** among all eligible providers each month via Stripe Connect, after deduction of a transparent platform fee covering infrastructure costs (fal.ai, hosting, maintenance).
 
 If no provider is available, the system automatically falls back to fal.ai.
 
