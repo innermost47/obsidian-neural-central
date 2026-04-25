@@ -158,7 +158,7 @@ class EmailService:
         {section_title("Download")}
         {download_buttons(f"{settings.REPO_URL}/releases/latest")}
 
-        {btn_primary("Open my dashboard →", f"{settings.FRONTEND_URL}/dashboard.html")}
+        {btn_primary("Open my dashboard →", f"{settings.FRONTEND_URL}/dashboard.php")}
 
         <p style="color:#4a4a4a;font-size:14px;margin:24px 0 0;line-height:1.6;">
           Questions? Just reply to this email &mdash; I read everything.<br/>
@@ -184,7 +184,7 @@ class EmailService:
         email: str, token: str, user_id: int, db: Session = None
     ) -> bool:
         unsub = EmailService._get_unsubscribe_token(user_id, db) if db else ""
-        verify_url = f"{settings.FRONTEND_URL}/verify-email.html?token={token}"
+        verify_url = f"{settings.FRONTEND_URL}/verify-email.php?token={token}"
 
         content = f"""
         {section_title("Email verification")}
@@ -216,7 +216,7 @@ class EmailService:
 
     @staticmethod
     def send_password_reset_email(email: str, token: str, db: Session = None) -> bool:
-        reset_url = f"{settings.FRONTEND_URL}/reset-password.html?token={token}"
+        reset_url = f"{settings.FRONTEND_URL}/reset-password.php?token={token}"
 
         content = f"""
         {section_title("Password reset")}
@@ -269,7 +269,7 @@ class EmailService:
             {stat_row("Status", '<span style="color:#b8605c;font-weight:700;">Active</span>')}
           </table>
         ''')}
-        {btn_primary("Open my dashboard →", f"{settings.FRONTEND_URL}/dashboard.html")}
+        {btn_primary("Open my dashboard →", f"{settings.FRONTEND_URL}/dashboard.php")}
         <p style="color:#4a4a4a;font-size:14px;margin:24px 0 0;">
           Thank you for your support &mdash; it genuinely helps keep this project alive. 🙏
         </p>
@@ -305,7 +305,7 @@ class EmailService:
           You'll continue to have access to all features until the end of your current billing period.
           After that, your account will revert to the free plan.
         </p>
-        {btn_secondary("Reactivate my subscription", f"{settings.FRONTEND_URL}/dashboard.html?section=subscription")}
+        {btn_secondary("Reactivate my subscription", f"{settings.FRONTEND_URL}/dashboard.php?section=subscription")}
         <p style="color:#4a4a4a;font-size:14px;margin:24px 0 0;line-height:1.6;">
           Changed your mind or have feedback? Just reply to this email.
         </p>
@@ -339,7 +339,7 @@ class EmailService:
         tier_display = tier.capitalize()
         credits = settings.TIER_CREDITS.get(tier, 0)
         total_value = duration_months * settings.TIER_PRICES_EUR.get(tier, 0)
-        activate_url = f"{settings.FRONTEND_URL}/gift-activate.html?code={gift_code}"
+        activate_url = f"{settings.FRONTEND_URL}/gift-activate.php?code={gift_code}"
 
         personal_msg = ""
         if gift_message:
@@ -410,7 +410,7 @@ class EmailService:
         )
         tier_display = tier.capitalize()
         time_label = "Tomorrow" if days_left == 1 else f"in {days_left} days"
-        dashboard = f"{settings.FRONTEND_URL}/dashboard.html?section=subscription"
+        dashboard = f"{settings.FRONTEND_URL}/dashboard.php?section=subscription"
 
         content = f"""
         {section_title("Subscription expiring")}
@@ -483,7 +483,7 @@ class EmailService:
           <p style="color:#4a4a4a;font-size:12px;margin:8px 0 0;">Your API key is in your dashboard.</p>
         ''')}
 
-        {btn_primary("Go to my dashboard →", f"{settings.FRONTEND_URL}/dashboard.html")}
+        {btn_primary("Go to my dashboard →", f"{settings.FRONTEND_URL}/dashboard.php")}
 
         <p style="color:#4a4a4a;font-size:14px;margin:24px 0 0;line-height:1.6;">
           Something not working? Just reply &mdash; I'll help you get it running.
@@ -526,7 +526,7 @@ class EmailService:
                     (5, "Sketch an arrangement idea in 2 minutes before building it out"),
                   ]])}
                 </table>
-                {btn_primary("Generate something now →", f"{settings.FRONTEND_URL}/dashboard.html")}
+                {btn_primary("Generate something now →", f"{settings.FRONTEND_URL}/dashboard.php")}
                 """,
             },
             3: {
@@ -543,7 +543,7 @@ class EmailService:
                     "<strong>Background generation</strong> — generate while playing other samples",
                   ]])}
                 </table>
-                {btn_primary("Open the plugin →", f"{settings.FRONTEND_URL}/dashboard.html")}
+                {btn_primary("Open the plugin →", f"{settings.FRONTEND_URL}/dashboard.php")}
                 """,
             },
             4: {
@@ -562,7 +562,7 @@ class EmailService:
                 <p style="color:#4a4a4a;font-size:14px;line-height:1.6;margin:0 0 24px;">
                   Just hit reply. I read every message. This is also my last automated email &mdash; no more from me unless you reach out. 🙏
                 </p>
-                {btn_secondary("View my dashboard", f"{settings.FRONTEND_URL}/dashboard.html")}
+                {btn_secondary("View my dashboard", f"{settings.FRONTEND_URL}/dashboard.php")}
                 """,
             },
         }
@@ -593,7 +593,7 @@ class EmailService:
         unsub = (
             EmailService._get_unsubscribe_token(user_id, db) if (db and user_id) else ""
         )
-        reset_url = f"{settings.FRONTEND_URL}/forgot-password.html"
+        reset_url = f"{settings.FRONTEND_URL}/forgot-password.php"
 
         content = f"""
         {section_title("Press & media access")}
@@ -854,7 +854,7 @@ class EmailService:
           </table>
         ''')}
 
-        {btn_primary("Claim my free month →", f"{settings.FRONTEND_URL}/pricing.html")}
+        {btn_primary("Claim my free month →", f"{settings.FRONTEND_URL}/pricing.php")}
 
         <p style="color:#4a4a4a;font-size:13px;margin:16px 0 0;line-height:1.6;">
           ✓ Cancel anytime &nbsp;&nbsp; ✓ All premium features &nbsp;&nbsp; ✓ Unlimited AI generation
@@ -901,8 +901,8 @@ class EmailService:
           </table>
         ''')}
 
-        {btn_primary("Claim my free month →", f"{settings.FRONTEND_URL}/pricing.html")}
-        {btn_secondary("See all plans", f"{settings.FRONTEND_URL}/pricing.html")}
+        {btn_primary("Claim my free month →", f"{settings.FRONTEND_URL}/pricing.php")}
+        {btn_secondary("See all plans", f"{settings.FRONTEND_URL}/pricing.php")}
 
         <p style="color:#4a4a4a;font-size:13px;margin:16px 0 0;line-height:1.6;">
           ✓ Generate unlimited samples &nbsp;&nbsp; ✓ All premium features &nbsp;&nbsp; ✓ Cancel anytime

@@ -275,7 +275,7 @@ class GoogleAnalyticsService:
             views = int(row.metric_values[0].value)
             users = int(row.metric_values[1].value)
 
-            if page_path in ["/", "/index.html"]:
+            if page_path in ["/", "/index.php"]:
                 key = "home"
             elif "pricing" in page_path:
                 key = "pricing"

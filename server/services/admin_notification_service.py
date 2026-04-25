@@ -21,7 +21,7 @@ def _now() -> str:
 
 
 def _admin_link() -> str:
-    url = f"{settings.FRONTEND_URL}/dashboard.html?section=admin"
+    url = f"{settings.FRONTEND_URL}/dashboard.php?section=admin"
     return btn_secondary("View in admin dashboard", url)
 
 

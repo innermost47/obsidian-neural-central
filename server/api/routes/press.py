@@ -66,4 +66,4 @@ async def confirm_press_request(
     db.delete(request)
     db.commit()
 
-    return RedirectResponse(url=f"{settings.FRONTEND_URL}/press-success.html")
+    return RedirectResponse(url=f"{settings.FRONTEND_URL}/press-success.php")

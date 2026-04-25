@@ -84,7 +84,7 @@ def base_template(
                     &nbsp;&bull;&nbsp;
                     <a href="{settings.REPO_URL} style="color:#cccccc;text-decoration:none;">GitHub</a>
                     &nbsp;&bull;&nbsp;
-                    <a href="{settings.FRONTEND_URL}/dashboard.html" style="color:#cccccc;text-decoration:none;">Dashboard</a>
+                    <a href="{settings.FRONTEND_URL}/dashboard.php" style="color:#cccccc;text-decoration:none;">Dashboard</a>
                   </p>
                   <p style="margin:0 0 8px;color:#cccccc;">
                     Presented at AES AIMLA 2025 &mdash; Queen Mary University London

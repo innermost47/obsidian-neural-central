@@ -480,7 +480,7 @@ async def google_callback(code: str, db: Session = Depends(get_db)):
             data={"sub": str(user.id), "email": user.email}
         )
 
-        redirect_url = f"{settings.FRONTEND_URL}/dashboard.html?token={access_token}"
+        redirect_url = f"{settings.FRONTEND_URL}/dashboard.php?token={access_token}"
         return RedirectResponse(url=redirect_url)
 
     except Exception as e:

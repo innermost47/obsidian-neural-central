@@ -34,8 +34,8 @@ class StripeService:
                 }
             ],
             mode="subscription",
-            success_url=f"{settings.FRONTEND_URL}/dashboard.html?session_id={{CHECKOUT_SESSION_ID}}",
-            cancel_url=f"{settings.FRONTEND_URL}/dashboard.html",
+            success_url=f"{settings.FRONTEND_URL}/dashboard.php?session_id={{CHECKOUT_SESSION_ID}}",
+            cancel_url=f"{settings.FRONTEND_URL}/dashboard.php",
             metadata={
                 "user_id": user_id,
                 "tier": tier,
@@ -82,8 +82,8 @@ class StripeService:
                 }
             ],
             mode="payment",
-            success_url=f"{settings.FRONTEND_URL}/gift-success.html?gift_code={gift_code}",
-            cancel_url=f"{settings.FRONTEND_URL}/gift.html",
+            success_url=f"{settings.FRONTEND_URL}/gift-success.php?gift_code={gift_code}",
+            cancel_url=f"{settings.FRONTEND_URL}/gift.php",
             metadata={
                 "type": "gift_subscription",
                 "purchaser_user_id": str(purchaser_user_id),
@@ -121,6 +121,6 @@ class StripeService:
     def create_customer_portal_session(customer_id: str):
         session = stripe.billing_portal.Session.create(
             customer=customer_id,
-            return_url=f"{settings.FRONTEND_URL}/dashboard.html",
+            return_url=f"{settings.FRONTEND_URL}/dashboard.php",
         )
         return session
