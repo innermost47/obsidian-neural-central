@@ -50,10 +50,7 @@ async def detect_bpm(
                 essentia_bpm = float(result[0])
                 essentia_conf = float(result[2]) if len(result) > 2 else 0.0
             except Exception as e:
-                print(f"⚠️ Essentia exec failed: {e}")
-
-            if essentia_conf >= 1.5:
-                return essentia_bpm, essentia_conf, None, "essentia"
+                print(f"Essentia failed: {e}")
 
             librosa_bpm = None
             try:
@@ -62,37 +59,14 @@ async def detect_bpm(
                     librosa_bpm = float(tempo[0]) if len(tempo) > 0 else None
                 else:
                     librosa_bpm = float(tempo) if tempo else None
-                print(f"   📊 Librosa raw output: {librosa_bpm}")
+                print(f"Librosa raw: {librosa_bpm}")
             except Exception as e:
-                print(f"   ⚠️ Librosa fallback exception: {e}")
+                print(f"Librosa failed: {e}")
 
-            return essentia_bpm, essentia_conf, librosa_bpm, "hybrid"
+            return essentia_bpm, essentia_conf, librosa_bpm
 
-        essentia_bpm, confidence, librosa_bpm, mode = await loop.run_in_executor(
+        essentia_bpm, confidence, librosa_bpm = await loop.run_in_executor(
             executor, process
-        )
-        raw_detected = essentia_bpm
-
-        if mode == "essentia":
-            if expected_bpm and expected_bpm > 0:
-                corrected = _try_correct_to_target(essentia_bpm, expected_bpm)
-                detected = corrected if corrected is not None else essentia_bpm
-            else:
-                detected = essentia_bpm
-                while detected >= 200:
-                    detected /= 2.0
-                while detected < 60:
-                    detected *= 2.0
-
-            print(
-                f"🎯 BPM detected (Essentia): raw={raw_detected:.2f} → "
-                f"corrected={detected:.2f} (confidence={confidence:.2f})"
-            )
-            return detected
-
-        print(
-            f"🔄 Essentia low confidence ({confidence:.2f}, raw={raw_detected:.2f}), "
-            f"trying librosa fallback..."
         )
 
         essentia_to_target = (
@@ -113,36 +87,51 @@ async def detect_bpm(
             < 0.05
         ):
             consensus = (essentia_to_target + librosa_to_target) / 2
-            print(
-                f"🤝 Essentia ({essentia_bpm:.2f}→{essentia_to_target:.2f}) ≈ "
-                f"Librosa ({librosa_bpm:.2f}→{librosa_to_target:.2f}) "
-                f"→ consensus={consensus:.2f}"
-            )
+            print(f"Consensus: {consensus:.2f}")
             return consensus
 
-        if librosa_to_target is not None:
-            print(
-                f"📚 Trusting librosa: {librosa_bpm:.2f} → "
-                f"{librosa_to_target:.2f} (target {expected_bpm})"
-            )
-            return librosa_to_target
-
-        if essentia_to_target is not None:
-            print(
-                f"🎯 Trusting essentia (corrected): {essentia_bpm:.2f} → "
-                f"{essentia_to_target:.2f} (target {expected_bpm})"
-            )
+        if essentia_to_target is not None and librosa_to_target is None:
+            print(f"Only Essentia matches target: {essentia_to_target:.2f}")
             return essentia_to_target
 
-        librosa_str = f"{librosa_bpm:.2f}" if librosa_bpm else "failed/None"
-        print(
-            f"⚠️ No reliable BPM consensus: essentia={raw_detected:.2f} "
-            f"(conf={confidence:.2f}), librosa={librosa_str} — skipping stretch"
-        )
+        if librosa_to_target is not None and essentia_to_target is None:
+            print(f"Only Librosa matches target: {librosa_to_target:.2f}")
+            return librosa_to_target
+
+        if essentia_to_target is not None and librosa_to_target is not None:
+            err_ess = abs(essentia_to_target - expected_bpm)
+            err_lib = abs(librosa_to_target - expected_bpm)
+            if err_ess <= err_lib:
+                print(
+                    f"Conflict, Essentia is closer to target: {essentia_to_target:.2f}"
+                )
+                return essentia_to_target
+            else:
+                print(f"Conflict, Librosa is closer to target: {librosa_to_target:.2f}")
+                return librosa_to_target
+
+        if essentia_bpm > 0 and librosa_bpm and librosa_bpm > 0:
+
+            def normalize_bpm(bpm):
+                while bpm >= 200:
+                    bpm /= 2
+                while bpm < 60:
+                    bpm *= 2
+                return bpm
+
+            norm_ess = normalize_bpm(essentia_bpm)
+            norm_lib = normalize_bpm(librosa_bpm)
+
+            if abs(norm_ess - norm_lib) / max(norm_ess, 1) < 0.1:
+                final = (norm_ess + norm_lib) / 2
+                print(f"No target, but zone agreement: {final:.2f}")
+                return final
+
+        print(f"No reliable BPM: essentia={essentia_bpm:.2f}, librosa={librosa_bpm}")
         return None
 
     except Exception as e:
-        print(f"⚠️ BPM detection failed: {e}")
+        print(f"BPM detection failed: {e}")
         return None
 
 
