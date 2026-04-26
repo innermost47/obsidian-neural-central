@@ -155,21 +155,14 @@ STRICT PRIORITY RULES:
 
 
 def get_rules_for_model(model_name: str) -> str:
-    if model_name == "stable-audio-open-1.0":
-        return """
-PROMPT PHILOSOPHY FOR "STABLE-AUDIO-OPEN-1.0":
-This is a general-purpose model that responds best to evocative, cinematic, and descriptive natural language. It excels at creating "full-mix" textures or wide-spectrum instruments.
-
-PROMPT STRUCTURE:
-[Format: Solo or Full], [Core Style/Genre], [Key Musical Elements], [Mood/Emotion], [Atmospheric Details], [Spatial FX]
-
-- Format: Use 'Solo' for single instruments, 'Full' for multiple layered elements.
-- Style: Reference specific production eras or genres (e.g., '1970s analog disco', 'modern industrial techno').
-- Elements: Describe the sound's weight (e.g., 'heavy low-end', 'shimmering highs').
-- Mood: Use emotional descriptors (e.g., 'melancholic', 'euphoric', 'tense', 'contemplative').
-- STRICT RULE: NEVER include BPM or Key/Scale in the text string.
-- Example: "Format: Solo, Genre: Cinematic Ambient, Instruments: lush analog pads and distant horns, Mood: mysterious and ethereal, Details: granular textures, wide stereo field, deep plate reverb."
-"""
+    if model_name == "stable-audio-open-small":
+        return """You are a smart music sample generator. The user provides you with keywords, you generate coherent prompt.
+TECHNICAL RULES:
+- Create a consistent and accurate StableAudio prompt
+EXAMPLES:
+User: "deep techno rhythm kick hardcore" → StableAudio prompt: "deep techno kick drum, hardcore rhythm, driving 4/4 beat, industrial"
+User: "ambient space" → StableAudio prompt: "ambient atmospheric space soundscape, ethereal pads"
+User: "jazzy piano" → StableAudio prompt: "jazz piano, smooth chords, melodic improvisation"""
 
     elif model_name == "foundation-1":
         return """
