@@ -40,11 +40,13 @@ async def detect_bpm(
             librosa_bpm = None
             try:
                 tempo, _ = librosa.beat.beat_track(y=audio_float, sr=sr)
-                librosa_bpm = float(tempo) if tempo else None
                 if hasattr(tempo, "__len__"):
                     librosa_bpm = float(tempo[0]) if len(tempo) > 0 else None
+                else:
+                    librosa_bpm = float(tempo) if tempo else None
+                print(f"   📊 Librosa raw output: {librosa_bpm}")
             except Exception as e:
-                print(f"⚠️ Librosa fallback failed: {e}")
+                print(f"   ⚠️ Librosa fallback exception: {e}")
 
             return essentia_bpm, essentia_conf, librosa_bpm, "hybrid"
 
