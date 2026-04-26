@@ -211,6 +211,7 @@ class RetryEmailsRequest(BaseModel):
 
 class SupportedModel(str, Enum):
     STABLE_AUDIO = "stable-audio-open-1.0"
+    STABLE_AUDIO_SMALL = "stable-audio-open-small"
     FOUNDATION_1 = "foundation-1"
     EDM_ELEMENTS = "audialab-edm-elements"
     INFINITE_PIANOS = "rc-infinite-pianos"
@@ -222,6 +223,7 @@ class SupportedModel(str, Enum):
 
 class SupportedModelId(str, Enum):
     STABLE_AUDIO = "stabilityai/stable-audio-open-1.0"
+    STABLE_AUDIO_SMALL = "stabilityai/stable-audio-open-small"
     FOUNDATION_1 = "RoyalCities/Foundation-1"
     EDM_ELEMENTS = "innermost47/obsidian-neural-models"
     INFINITE_PIANOS = "innermost47/obsidian-neural-models"
