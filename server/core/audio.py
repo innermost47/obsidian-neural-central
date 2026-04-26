@@ -146,15 +146,55 @@ async def detect_bpm(
         return None
 
 
+def detect_percussive_content(audio: np.ndarray, sr: int) -> bool:
+    audio_mono = librosa.to_mono(audio) if audio.ndim == 2 else audio
+    audio_float = audio_mono.astype(np.float32)
+    duration = len(audio_float) / sr
+
+    try:
+        onsets = librosa.onset.onset_detect(
+            y=audio_float, sr=sr, units="time", backtrack=False
+        )
+        onset_density = len(onsets) / duration if duration > 0 else 0
+        onset_says_perc = onset_density > 2.0
+    except Exception:
+        onset_density = 0
+        onset_says_perc = False
+
+    try:
+        harmonic, percussive = librosa.effects.hpss(audio_float)
+        energy_h = float(np.sum(harmonic**2))
+        energy_p = float(np.sum(percussive**2))
+        total = energy_h + energy_p
+        perc_ratio = energy_p / total if total > 0 else 0
+        hpss_says_perc = perc_ratio > 0.5
+    except Exception:
+        perc_ratio = 0
+        hpss_says_perc = False
+
+    is_perc = onset_says_perc or hpss_says_perc
+
+    print(
+        f"🥁 Content analysis: onset_density={onset_density:.2f}/s, "
+        f"hpss_perc_ratio={perc_ratio:.2f} → "
+        f"{'PERCUSSIVE' if is_perc else 'MELODIC'}"
+    )
+    return is_perc
+
+
 def stretch_audio_to_bpm(
     audio: np.ndarray,
     sr: int,
-    detected_bpm: float,
-    target_bpm: float,
+    detected_bpm: Optional[float],
+    target_bpm: Optional[float],
     max_bpm_diff: float = 0.5,
+    max_stretch_for_percussive: float = 0.05,
 ) -> np.ndarray:
     if detected_bpm is None or target_bpm is None:
-        print("⚠️ stretch_audio_to_bpm: None BPM, skipping stretch")
+        print("⚠️ Skipping stretch: BPM is None")
+        return audio
+
+    if detected_bpm <= 0 or target_bpm <= 0:
         return audio
 
     while detected_bpm >= 200:
@@ -167,20 +207,32 @@ def stretch_audio_to_bpm(
         target_bpm *= 2.0
 
     if abs(detected_bpm - target_bpm) <= max_bpm_diff:
-        print(f"✅ BPM in groove ({detected_bpm:.2f} vs {target_bpm})")
+        print(f"✅ BPM in groove ({detected_bpm:.2f} vs {target_bpm:.2f})")
         return audio
 
     ratio = target_bpm / detected_bpm
+    deviation = abs(ratio - 1.0)
+
     if ratio < 0.5 or ratio > 2.0:
         print(
-            f"⚠️ Stretch ratio extreme ({ratio:.3f}), audio quality will suffer. "
-            f"Skipping stretch — BPM detection probably wrong."
+            f"⚠️ Stretch ratio extreme ({ratio:.3f}), skipping "
+            f"(BPM detection probably wrong)"
+        )
+        return audio
+
+    is_percussive = detect_percussive_content(audio, sr)
+
+    if is_percussive and deviation > max_stretch_for_percussive:
+        print(
+            f"⚠️ Stretch ratio {ratio:.4f} ({deviation*100:.1f}%) too aggressive "
+            f"for percussive content. Keeping audio at {detected_bpm:.1f} BPM "
+            f"(target was {target_bpm:.1f})."
         )
         return audio
 
     print(
-        f"🔧 Time-stretch (Rubberband R3): {detected_bpm:.2f} → {target_bpm:.2f} BPM "
-        f"(ratio={ratio:.4f})"
+        f"🔧 Time-stretch ({'R2+crisp6' if is_percussive else 'R3'}): "
+        f"{detected_bpm:.2f} → {target_bpm:.2f} BPM (ratio={ratio:.4f})"
     )
 
     in_path = None
@@ -198,23 +250,7 @@ def stretch_audio_to_bpm(
 
         sf.write(in_path, audio_to_write, sr, subtype="PCM_16")
 
-        cmd = [
-            "rubberband-r3",
-            "-T",
-            f"{detected_bpm:.4f}:{target_bpm:.4f}",
-            "--fine",
-            "-q",
-            in_path,
-            out_path,
-        ]
-
-        result = subprocess.run(cmd, capture_output=True, text=True)
-
-        if result.returncode != 0 and (
-            "not found" in str(result.stderr).lower()
-            or "no such" in str(result.stderr).lower()
-        ):
-            print("⚠️ R3 engine not found, fallback to R2...")
+        if is_percussive:
             cmd = [
                 "rubberband",
                 "-T",
@@ -225,6 +261,27 @@ def stretch_audio_to_bpm(
                 in_path,
                 out_path,
             ]
+        else:
+            cmd = [
+                "rubberband-r3",
+                "-T",
+                f"{detected_bpm:.4f}:{target_bpm:.4f}",
+                "-q",
+                in_path,
+                out_path,
+            ]
+
+        result = subprocess.run(cmd, capture_output=True, text=True)
+
+        if result.returncode != 0 and (
+            "not found" in str(result.stderr).lower()
+            or "no such" in str(result.stderr).lower()
+        ):
+            fallback_engine = "rubberband-r3" if is_percussive else "rubberband"
+            print(f"⚠️ Engine not found, fallback to {fallback_engine}...")
+            cmd[0] = fallback_engine
+            if fallback_engine == "rubberband-r3":
+                cmd = [c for c in cmd if c not in ("--crisp", "6")]
             result = subprocess.run(cmd, capture_output=True, text=True)
 
         if result.returncode != 0:
@@ -237,10 +294,7 @@ def stretch_audio_to_bpm(
         return stretched_audio
 
     except Exception as e:
-        print(
-            f"⚠️ Rubberband failed: {e}, falling back to librosa "
-            f"(audio will sound bad)"
-        )
+        print(f"⚠️ Rubberband failed: {e}, falling back to librosa")
         time_ratio = target_bpm / detected_bpm
         if audio.ndim == 2 and audio.shape[0] == 2:
             left = librosa.effects.time_stretch(audio[0], rate=time_ratio)
