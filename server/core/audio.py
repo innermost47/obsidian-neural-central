@@ -14,6 +14,51 @@ import essentia.standard as es
 executor = ThreadPoolExecutor(max_workers=4)
 
 
+async def detect_bpm(
+    audio: np.ndarray, sr: int, expected_bpm: Optional[float] = None
+) -> float | None:
+    try:
+        loop = asyncio.get_event_loop()
+        audio_mono = librosa.to_mono(audio) if audio.ndim == 2 else audio
+
+        def process():
+            audio_float = audio_mono.astype(np.float32)
+            rhythm_extractor = es.RhythmExtractor2013(method="multifeature")
+            bpm, _, confidence, _, _ = rhythm_extractor(audio_float)
+            return float(bpm), float(confidence)
+
+        detected, confidence = await loop.run_in_executor(executor, process)
+        raw_detected = detected
+
+        if confidence < 1.5:
+            print(
+                f"⚠️ Low confidence BPM detection ({confidence:.2f}), "
+                f"detected={detected:.1f} — skipping stretch"
+            )
+            return None
+
+        if expected_bpm and expected_bpm > 0:
+            while detected > (expected_bpm * 1.5):
+                detected /= 2.0
+            while detected < (expected_bpm * 0.67):
+                detected *= 2.0
+        else:
+            while detected >= 200:
+                detected /= 2.0
+            while detected < 60:
+                detected *= 2.0
+
+        print(
+            f"🎯 BPM detected (Essentia): raw={raw_detected:.2f} → "
+            f"corrected={detected:.2f} (confidence={confidence:.2f})"
+        )
+        return detected
+
+    except Exception as e:
+        print(f"⚠️ Essentia BPM failed: {e}")
+        return None
+
+
 def stretch_audio_to_bpm(
     audio: np.ndarray,
     sr: int,
@@ -34,10 +79,21 @@ def stretch_audio_to_bpm(
         target_bpm *= 2.0
 
     if abs(detected_bpm - target_bpm) <= max_bpm_diff:
-        print(f"✅ BPM in groove ({detected_bpm:.1f} vs {target_bpm})")
+        print(f"✅ BPM in groove ({detected_bpm:.2f} vs {target_bpm})")
         return audio
 
-    print(f"🔧 Time-stretch (Rubberband R3): {detected_bpm:.1f} → {target_bpm} BPM")
+    ratio = target_bpm / detected_bpm
+    if ratio < 0.5 or ratio > 2.0:
+        print(
+            f"⚠️ Stretch ratio extreme ({ratio:.3f}), audio quality will suffer. "
+            f"Skipping stretch — BPM detection probably wrong."
+        )
+        return audio
+
+    print(
+        f"🔧 Time-stretch (Rubberband R3): {detected_bpm:.2f} → {target_bpm:.2f} BPM "
+        f"(ratio={ratio:.4f})"
+    )
 
     in_path = None
     out_path = None
@@ -56,7 +112,9 @@ def stretch_audio_to_bpm(
 
         cmd = [
             "rubberband-r3",
-            f"-T{int(detected_bpm)}:{int(target_bpm)}",
+            "-T",
+            f"{detected_bpm:.4f}:{target_bpm:.4f}",
+            "--fine",
             "-q",
             in_path,
             out_path,
@@ -64,11 +122,17 @@ def stretch_audio_to_bpm(
 
         result = subprocess.run(cmd, capture_output=True, text=True)
 
-        if result.returncode != 0 and "not found" in str(result.stderr).lower():
+        if result.returncode != 0 and (
+            "not found" in str(result.stderr).lower()
+            or "no such" in str(result.stderr).lower()
+        ):
             print("⚠️ R3 engine not found, fallback to R2...")
             cmd = [
                 "rubberband",
-                f"-T{int(detected_bpm)}:{int(target_bpm)}",
+                "-T",
+                f"{detected_bpm:.4f}:{target_bpm:.4f}",
+                "--crisp",
+                "6",
                 "-q",
                 in_path,
                 out_path,
@@ -76,19 +140,18 @@ def stretch_audio_to_bpm(
             result = subprocess.run(cmd, capture_output=True, text=True)
 
         if result.returncode != 0:
-            raise Exception(f"CLI Error: {result.stderr}")
+            raise Exception(f"Rubberband CLI error: {result.stderr}")
 
         stretched_audio, _ = librosa.load(out_path, sr=sr, mono=False)
         if stretched_audio.ndim == 1:
             stretched_audio = np.array([stretched_audio, stretched_audio])
-        elif stretched_audio.ndim == 2 and stretched_audio.shape[1] == 2:
-            stretched_audio = stretched_audio.T
 
         return stretched_audio
 
     except Exception as e:
         print(
-            f"⚠️ Rubberband failed: {e}, falling back to Librosa (audio will sound bad)"
+            f"⚠️ Rubberband failed: {e}, falling back to librosa "
+            f"(audio will sound bad)"
         )
         time_ratio = target_bpm / detected_bpm
         if audio.ndim == 2 and audio.shape[0] == 2:
@@ -102,6 +165,56 @@ def stretch_audio_to_bpm(
             os.remove(in_path)
         if out_path and os.path.exists(out_path):
             os.remove(out_path)
+
+
+async def fetch_audio_bytes(result: dict) -> bytes:
+    raw_content = None
+    if "wav_bytes" in result:
+        raw_content = result["wav_bytes"]
+    else:
+        async with httpx.AsyncClient(timeout=60.0) as client:
+            response = await client.get(result["audio_url"])
+            response.raise_for_status()
+            raw_content = response.content
+
+    try:
+        audio_data, sr = librosa.load(io.BytesIO(raw_content), sr=None, mono=False)
+
+        mono_for_trim = (
+            librosa.to_mono(audio_data) if audio_data.ndim == 2 else audio_data
+        )
+        non_silent = librosa.effects.split(
+            mono_for_trim, top_db=60, frame_length=2048, hop_length=512
+        )
+
+        if len(non_silent) > 0:
+            start_sample = non_silent[0][0]
+            preroll = int(0.01 * sr)
+            start_sample = max(0, start_sample - preroll)
+
+            if audio_data.ndim == 2:
+                trimmed_audio = audio_data[:, start_sample:]
+            else:
+                trimmed_audio = audio_data[start_sample:]
+
+            removed_ms = (start_sample / sr) * 1000
+            if removed_ms > 5:
+                print(f"✂️ Trimmed {removed_ms:.1f}ms of leading silence")
+        else:
+            trimmed_audio = audio_data
+
+        buffer = io.BytesIO()
+        sf.write(
+            buffer,
+            trimmed_audio.T if trimmed_audio.ndim > 1 else trimmed_audio,
+            sr,
+            format="WAV",
+        )
+        return buffer.getvalue()
+
+    except Exception as e:
+        print(f"⚠️ Error while trimming silence: {e}")
+        return raw_content
 
 
 async def load_audio_original(audio_bytes: bytes) -> tuple[np.ndarray, int]:
@@ -130,35 +243,6 @@ def resample_audio(audio: np.ndarray, orig_sr: int, target_sr: int) -> np.ndarra
         return librosa.resample(audio, orig_sr=orig_sr, target_sr=target_sr)
 
 
-async def detect_bpm(
-    audio: np.ndarray, sr: int, expected_bpm: Optional[float] = None
-) -> float | None:
-    try:
-        loop = asyncio.get_event_loop()
-        audio_mono = librosa.to_mono(audio) if audio.ndim == 2 else audio
-
-        def process():
-            audio_float = audio_mono.astype(np.float32)
-            rhythm_extractor = es.RhythmExtractor2013(method="multifeature")
-            bpm = rhythm_extractor(audio_float)[0]
-            return float(bpm)
-
-        detected = await loop.run_in_executor(executor, process)
-
-        if detected and expected_bpm and expected_bpm > 0:
-            while detected > (expected_bpm * 1.8):
-                print(
-                    f"⚠️ Essentia over-detected: {detected:.1f} → {detected/2:.1f} (target ~{expected_bpm})"
-                )
-                detected /= 2.0
-
-        print(f"🎯 BPM detected (Essentia): {detected:.2f}")
-        return detected
-    except Exception as e:
-        print(f"⚠️ Essentia BPM failed: {e}")
-        return None
-
-
 def audio_to_wav_bytes(audio: np.ndarray, sr: int) -> tuple[bytes, float]:
     buffer = io.BytesIO()
 
@@ -179,42 +263,6 @@ def audio_to_wav_bytes(audio: np.ndarray, sr: int) -> tuple[bytes, float]:
 
 def sanitize_header(value: str) -> str:
     return value.encode("latin-1", errors="replace").decode("latin-1")
-
-
-import io
-import librosa
-import soundfile as sf
-import numpy as np
-
-
-async def fetch_audio_bytes(result: dict) -> bytes:
-    raw_content = None
-    if "wav_bytes" in result:
-        raw_content = result["wav_bytes"]
-    else:
-        async with httpx.AsyncClient(timeout=60.0) as client:
-            response = await client.get(result["audio_url"])
-            response.raise_for_status()
-            raw_content = response.content
-    try:
-        audio_data, sr = librosa.load(io.BytesIO(raw_content), sr=None, mono=False)
-        trimmed_audio, _ = librosa.effects.trim(
-            audio_data, top_db=45, frame_length=512, hop_length=128
-        )
-        buffer = io.BytesIO()
-        sf.write(
-            buffer,
-            trimmed_audio.T if trimmed_audio.ndim > 1 else trimmed_audio,
-            sr,
-            format="WAV",
-        )
-
-        print("✂️ Silence trimmed at the start of the sample.")
-        return buffer.getvalue()
-
-    except Exception as e:
-        print(f"⚠️ Error while trimming silence: {e}")
-        return raw_content
 
 
 def build_response_headers(
