@@ -310,9 +310,15 @@ async def generate_audio(
             detected_bpm = await detect_bpm(
                 audio, original_sr, expected_bpm=float(resolved["bpm"])
             )
-            audio = stretch_audio_to_bpm(
-                audio, original_sr, detected_bpm, float(resolved["bpm"])
-            )
+            if detected_bpm is not None:
+                audio = stretch_audio_to_bpm(
+                    audio, original_sr, detected_bpm, float(resolved["bpm"])
+                )
+            else:
+                print(
+                    f"⚠️ Skipping stretch for {resolved['model']}: "
+                    f"BPM detection unreliable, audio used as-is"
+                )
         else:
             snapped_bpm = result.get("snapped_bpm")
             detected_bpm = float(snapped_bpm) if snapped_bpm else None

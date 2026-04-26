@@ -83,7 +83,8 @@ def stretch_audio_to_bpm(
     target_bpm: float,
     max_bpm_diff: float = 0.5,
 ) -> np.ndarray:
-    if detected_bpm <= 0 or target_bpm <= 0:
+    if detected_bpm is None or target_bpm is None:
+        print("⚠️ stretch_audio_to_bpm: None BPM, skipping stretch")
         return audio
 
     while detected_bpm >= 200:
