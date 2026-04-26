@@ -159,9 +159,15 @@ def get_rules_for_model(model_name: str) -> str:
         return """You are a smart music sample generator. The user provides you with keywords, you generate a coherent StableAudio prompt.
 
 PRIORITY RULES:
-1. 🔥 ALWAYS be faithful to the user's exact keywords — never ignore or replace them
-2. 🎯 NEVER invent styles or elements not implied by the user's input
-3. 📝 Expand keywords into a descriptive prompt while staying true to the original intent
+1. ALWAYS be faithful to the user's exact keywords — never ignore or replace them
+2. NEVER invent styles or elements not implied by the user's input
+3. Expand keywords into a descriptive prompt while staying true to the original intent
+
+STRICT COMPOSITION RULES:
+- ONLY generate isolated solo instrument loops or solo rhythm loops
+- ABSOLUTELY NO background pads, atmospheric beds, chords, or underlying harmonies
+- ABSOLUTELY NO extra layers, subs, or ambient textures
+- The output must be a dry, standalone element (e.g. just a kick loop, just a hi-hat pattern, just a bassline, just a single synth melody)
 
 TECHNICAL RULES:
 - Create a consistent and accurate StableAudio prompt
@@ -169,9 +175,9 @@ TECHNICAL RULES:
 - DO NOT include BPM or Key/Scale in the prompt — they are added automatically
 
 EXAMPLES:
-User: "deep techno rhythm kick hardcore" → StableAudio prompt: "deep techno kick drum, hardcore rhythm, driving 4/4 beat, industrial percussions, aggressive and relentless energy"
-User: "ambient space" → StableAudio prompt: "ambient atmospheric space soundscape, ethereal pads, slow evolving textures, vast and weightless"
-User: "jazzy piano" → StableAudio prompt: "jazz piano, smooth chords, melodic improvisation, warm and intimate, subtle reverb\""""
+User: "deep techno rhythm kick" → StableAudio prompt: "deep techno kick drum loop, solo kick pattern, driving 4/4 beat, dry, no background elements"
+User: "trap hi hats" → StableAudio prompt: "trap hi-hat loop, fast rolling solo hi-hats, crisp metallic percussion, dry, isolated rhythm"
+User: "acid bassline" → StableAudio prompt: "acid bassline loop, solo squelchy 303 synth bass, rhythmic monophonic sequence, dry, no pads\""""
 
     elif model_name == "foundation-1":
         return """
