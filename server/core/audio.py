@@ -14,6 +14,24 @@ import essentia.standard as es
 executor = ThreadPoolExecutor(max_workers=4)
 
 
+def _try_correct_to_target(detected: float, target: float, tolerance: float = 0.15):
+    if detected <= 0 or target <= 0:
+        return None
+    candidates = [
+        detected,
+        detected * 2,
+        detected / 2,
+        detected * 4 / 3,
+        detected * 3 / 4,
+        detected * 3 / 2,
+        detected * 2 / 3,
+    ]
+    best = min(candidates, key=lambda c: abs(c - target) / target)
+    if abs(best - target) / target <= tolerance:
+        return best
+    return None
+
+
 async def detect_bpm(
     audio: np.ndarray, sr: int, expected_bpm: Optional[float] = None
 ) -> float | None:
@@ -56,13 +74,11 @@ async def detect_bpm(
         raw_detected = essentia_bpm
 
         if mode == "essentia":
-            detected = essentia_bpm
             if expected_bpm and expected_bpm > 0:
-                while detected > (expected_bpm * 1.5):
-                    detected /= 2.0
-                while detected < (expected_bpm * 0.67):
-                    detected *= 2.0
+                corrected = _try_correct_to_target(essentia_bpm, expected_bpm)
+                detected = corrected if corrected is not None else essentia_bpm
             else:
+                detected = essentia_bpm
                 while detected >= 200:
                     detected /= 2.0
                 while detected < 60:
@@ -78,63 +94,47 @@ async def detect_bpm(
             f"🔄 Essentia low confidence ({confidence:.2f}, raw={raw_detected:.2f}), "
             f"trying librosa fallback..."
         )
-        if (
-            librosa_bpm is not None
-            and librosa_bpm > 0
-            and expected_bpm
-            and expected_bpm > 0
-        ):
-            while librosa_bpm > (expected_bpm * 1.5):
-                librosa_bpm /= 2.0
-            while librosa_bpm < (expected_bpm * 0.67):
-                librosa_bpm *= 2.0
 
-        essentia_corrected = essentia_bpm
-        if essentia_corrected > 0 and expected_bpm and expected_bpm > 0:
-            while essentia_corrected > (expected_bpm * 1.5):
-                essentia_corrected /= 2.0
-            while essentia_corrected < (expected_bpm * 0.67):
-                essentia_corrected *= 2.0
+        essentia_to_target = (
+            _try_correct_to_target(essentia_bpm, expected_bpm)
+            if expected_bpm and expected_bpm > 0
+            else None
+        )
+        librosa_to_target = (
+            _try_correct_to_target(librosa_bpm, expected_bpm)
+            if librosa_bpm and expected_bpm and expected_bpm > 0
+            else None
+        )
 
         if (
-            librosa_bpm is not None
-            and librosa_bpm > 0
-            and essentia_corrected > 0
-            and abs(librosa_bpm - essentia_corrected) / max(essentia_corrected, 1)
+            essentia_to_target is not None
+            and librosa_to_target is not None
+            and abs(essentia_to_target - librosa_to_target) / max(essentia_to_target, 1)
             < 0.05
         ):
-            consensus = (librosa_bpm + essentia_corrected) / 2
+            consensus = (essentia_to_target + librosa_to_target) / 2
             print(
-                f"🤝 Essentia ({essentia_corrected:.2f}) ≈ Librosa ({librosa_bpm:.2f}) "
+                f"🤝 Essentia ({essentia_bpm:.2f}→{essentia_to_target:.2f}) ≈ "
+                f"Librosa ({librosa_bpm:.2f}→{librosa_to_target:.2f}) "
                 f"→ consensus={consensus:.2f}"
             )
             return consensus
 
-        if (
-            librosa_bpm is not None
-            and librosa_bpm > 0
-            and expected_bpm
-            and expected_bpm > 0
-        ):
-            ratio = librosa_bpm / expected_bpm
-            if 0.85 <= ratio <= 1.15:
-                print(
-                    f"📚 Trusting librosa: {librosa_bpm:.2f} "
-                    f"(close to target {expected_bpm})"
-                )
-                return librosa_bpm
+        if librosa_to_target is not None:
+            print(
+                f"📚 Trusting librosa: {librosa_bpm:.2f} → "
+                f"{librosa_to_target:.2f} (target {expected_bpm})"
+            )
+            return librosa_to_target
 
-        if essentia_corrected > 0 and expected_bpm and expected_bpm > 0:
-            ratio = essentia_corrected / expected_bpm
-            if 0.85 <= ratio <= 1.15:
-                print(
-                    f"🎯 Low confidence ({confidence:.2f}) but octave-corrected "
-                    f"essentia is plausible: raw={raw_detected:.2f} → "
-                    f"{essentia_corrected:.2f} (target={expected_bpm})"
-                )
-                return essentia_corrected
+        if essentia_to_target is not None:
+            print(
+                f"🎯 Trusting essentia (corrected): {essentia_bpm:.2f} → "
+                f"{essentia_to_target:.2f} (target {expected_bpm})"
+            )
+            return essentia_to_target
 
-        librosa_str = f"{librosa_bpm:.2f}" if librosa_bpm else "failed"
+        librosa_str = f"{librosa_bpm:.2f}" if librosa_bpm else "failed/None"
         print(
             f"⚠️ No reliable BPM consensus: essentia={raw_detected:.2f} "
             f"(conf={confidence:.2f}), librosa={librosa_str} — skipping stretch"
