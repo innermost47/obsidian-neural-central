@@ -188,7 +188,7 @@ def stretch_audio_to_bpm(
     detected_bpm: Optional[float],
     target_bpm: Optional[float],
     max_bpm_diff: float = 0.5,
-    max_stretch_for_percussive: float = 0.05,
+    max_stretch_for_percussive: float = 0.08,
 ) -> np.ndarray:
     if detected_bpm is None or target_bpm is None:
         print("⚠️ Skipping stretch: BPM is None")
