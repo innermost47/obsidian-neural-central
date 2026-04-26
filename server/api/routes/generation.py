@@ -324,7 +324,11 @@ async def generate_audio(
             detected_bpm = float(snapped_bpm) if snapped_bpm else None
             if snapped_bpm and int(snapped_bpm) != int(resolved["bpm"]):
                 audio = stretch_audio_to_bpm(
-                    audio, original_sr, float(snapped_bpm), float(resolved["bpm"])
+                    audio,
+                    original_sr,
+                    float(snapped_bpm),
+                    float(resolved["bpm"]),
+                    force_stretch=True,
                 )
 
         target_samples = int(round(float(request.generation_duration) * original_sr))

@@ -189,6 +189,8 @@ def stretch_audio_to_bpm(
     target_bpm: Optional[float],
     max_bpm_diff: float = 0.5,
     max_stretch_for_percussive: float = 0.08,
+    max_stretch_for_melodic: float = 0.15,
+    force_stretch: bool = False,
 ) -> np.ndarray:
     if detected_bpm is None or target_bpm is None:
         print("⚠️ Skipping stretch: BPM is None")
@@ -213,7 +215,7 @@ def stretch_audio_to_bpm(
     ratio = target_bpm / detected_bpm
     deviation = abs(ratio - 1.0)
 
-    if ratio < 0.5 or ratio > 2.0:
+    if not force_stretch and (ratio < 0.5 or ratio > 2.0):
         print(
             f"⚠️ Stretch ratio extreme ({ratio:.3f}), skipping "
             f"(BPM detection probably wrong)"
@@ -222,16 +224,26 @@ def stretch_audio_to_bpm(
 
     is_percussive = detect_percussive_content(audio, sr)
 
-    if is_percussive and deviation > max_stretch_for_percussive:
-        print(
-            f"⚠️ Stretch ratio {ratio:.4f} ({deviation*100:.1f}%) too aggressive "
-            f"for percussive content. Keeping audio at {detected_bpm:.1f} BPM "
-            f"(target was {target_bpm:.1f})."
-        )
-        return audio
+    if not force_stretch:
+        if is_percussive and deviation > max_stretch_for_percussive:
+            print(
+                f"⚠️ Stretch ratio {ratio:.4f} ({deviation*100:.1f}%) too aggressive "
+                f"for percussive content. Keeping audio at {detected_bpm:.1f} BPM "
+                f"(target was {target_bpm:.1f})."
+            )
+            return audio
 
+        if not is_percussive and deviation > max_stretch_for_melodic:
+            print(
+                f"⚠️ Stretch ratio {ratio:.4f} ({deviation*100:.1f}%) too aggressive "
+                f"for melodic content. Keeping audio at {detected_bpm:.1f} BPM "
+                f"(target was {target_bpm:.1f})."
+            )
+            return audio
+
+    forced_tag = " [FORCED]" if force_stretch else ""
     print(
-        f"🔧 Time-stretch ({'R2+crisp6' if is_percussive else 'R3'}): "
+        f"🔧 Time-stretch{forced_tag} ({'R2+crisp6' if is_percussive else 'R3'}): "
         f"{detected_bpm:.2f} → {target_bpm:.2f} BPM (ratio={ratio:.4f})"
     )
 
