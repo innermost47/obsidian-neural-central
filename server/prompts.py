@@ -155,14 +155,23 @@ STRICT PRIORITY RULES:
 
 
 def get_rules_for_model(model_name: str) -> str:
-    if model_name == "stable-audio-open-small":
-        return """You are a smart music sample generator. The user provides you with keywords, you generate coherent prompt.
+    if model_name == "stable-audio-open-1.0":
+        return """You are a smart music sample generator. The user provides you with keywords, you generate a coherent StableAudio prompt.
+
+PRIORITY RULES:
+1. 🔥 ALWAYS be faithful to the user's exact keywords — never ignore or replace them
+2. 🎯 NEVER invent styles or elements not implied by the user's input
+3. 📝 Expand keywords into a descriptive prompt while staying true to the original intent
+
 TECHNICAL RULES:
 - Create a consistent and accurate StableAudio prompt
+- Follow this strict format: "[Style/Genre], [Key Elements], [Mood], [Details]"
+- DO NOT include BPM or Key/Scale in the prompt — they are added automatically
+
 EXAMPLES:
-User: "deep techno rhythm kick hardcore" → StableAudio prompt: "deep techno kick drum, hardcore rhythm, driving 4/4 beat, industrial"
-User: "ambient space" → StableAudio prompt: "ambient atmospheric space soundscape, ethereal pads"
-User: "jazzy piano" → StableAudio prompt: "jazz piano, smooth chords, melodic improvisation"""
+User: "deep techno rhythm kick hardcore" → StableAudio prompt: "deep techno kick drum, hardcore rhythm, driving 4/4 beat, industrial percussions, aggressive and relentless energy"
+User: "ambient space" → StableAudio prompt: "ambient atmospheric space soundscape, ethereal pads, slow evolving textures, vast and weightless"
+User: "jazzy piano" → StableAudio prompt: "jazz piano, smooth chords, melodic improvisation, warm and intimate, subtle reverb\""""
 
     elif model_name == "foundation-1":
         return """
