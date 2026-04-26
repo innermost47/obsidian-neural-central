@@ -23,56 +23,124 @@ async def detect_bpm(
 
         def process():
             audio_float = audio_mono.astype(np.float32)
-            rhythm_extractor = es.RhythmExtractor2013(method="multifeature")
-            result = rhythm_extractor(audio_float)
-            bpm = float(result[0])
-            confidence = float(result[2]) if len(result) > 2 else 0.0
-            return bpm, confidence
 
-        detected, confidence = await loop.run_in_executor(executor, process)
-        raw_detected = detected
+            essentia_bpm = 0.0
+            essentia_conf = 0.0
+            try:
+                rhythm_extractor = es.RhythmExtractor2013(method="multifeature")
+                result = rhythm_extractor(audio_float)
+                essentia_bpm = float(result[0])
+                essentia_conf = float(result[2]) if len(result) > 2 else 0.0
+            except Exception as e:
+                print(f"⚠️ Essentia exec failed: {e}")
 
-        if confidence < 1.5:
-            if expected_bpm and expected_bpm > 0 and detected > 0:
+            if essentia_conf >= 1.5:
+                return essentia_bpm, essentia_conf, None, "essentia"
+
+            librosa_bpm = None
+            try:
+                tempo, _ = librosa.beat.beat_track(y=audio_float, sr=sr)
+                librosa_bpm = float(tempo) if tempo else None
+                if hasattr(tempo, "__len__"):
+                    librosa_bpm = float(tempo[0]) if len(tempo) > 0 else None
+            except Exception as e:
+                print(f"⚠️ Librosa fallback failed: {e}")
+
+            return essentia_bpm, essentia_conf, librosa_bpm, "hybrid"
+
+        essentia_bpm, confidence, librosa_bpm, mode = await loop.run_in_executor(
+            executor, process
+        )
+        raw_detected = essentia_bpm
+
+        if mode == "essentia":
+            detected = essentia_bpm
+            if expected_bpm and expected_bpm > 0:
                 while detected > (expected_bpm * 1.5):
                     detected /= 2.0
                 while detected < (expected_bpm * 0.67):
                     detected *= 2.0
-
-                ratio_to_target = detected / expected_bpm
-                if 0.85 <= ratio_to_target <= 1.15:
-                    print(
-                        f"🎯 Low confidence ({confidence:.2f}) but octave-corrected "
-                        f"to plausible value: raw={raw_detected:.2f} → {detected:.2f} "
-                        f"(target={expected_bpm})"
-                    )
-                    return detected
+            else:
+                while detected >= 200:
+                    detected /= 2.0
+                while detected < 60:
+                    detected *= 2.0
 
             print(
-                f"⚠️ Low confidence BPM detection ({confidence:.2f}), "
-                f"detected={raw_detected:.1f} — skipping stretch"
+                f"🎯 BPM detected (Essentia): raw={raw_detected:.2f} → "
+                f"corrected={detected:.2f} (confidence={confidence:.2f})"
             )
-            return None
-
-        if expected_bpm and expected_bpm > 0:
-            while detected > (expected_bpm * 1.5):
-                detected /= 2.0
-            while detected < (expected_bpm * 0.67):
-                detected *= 2.0
-        else:
-            while detected >= 200:
-                detected /= 2.0
-            while detected < 60:
-                detected *= 2.0
+            return detected
 
         print(
-            f"🎯 BPM detected (Essentia): raw={raw_detected:.2f} → "
-            f"corrected={detected:.2f} (confidence={confidence:.2f})"
+            f"🔄 Essentia low confidence ({confidence:.2f}, raw={raw_detected:.2f}), "
+            f"trying librosa fallback..."
         )
-        return detected
+        if (
+            librosa_bpm is not None
+            and librosa_bpm > 0
+            and expected_bpm
+            and expected_bpm > 0
+        ):
+            while librosa_bpm > (expected_bpm * 1.5):
+                librosa_bpm /= 2.0
+            while librosa_bpm < (expected_bpm * 0.67):
+                librosa_bpm *= 2.0
+
+        essentia_corrected = essentia_bpm
+        if essentia_corrected > 0 and expected_bpm and expected_bpm > 0:
+            while essentia_corrected > (expected_bpm * 1.5):
+                essentia_corrected /= 2.0
+            while essentia_corrected < (expected_bpm * 0.67):
+                essentia_corrected *= 2.0
+
+        if (
+            librosa_bpm is not None
+            and librosa_bpm > 0
+            and essentia_corrected > 0
+            and abs(librosa_bpm - essentia_corrected) / max(essentia_corrected, 1)
+            < 0.05
+        ):
+            consensus = (librosa_bpm + essentia_corrected) / 2
+            print(
+                f"🤝 Essentia ({essentia_corrected:.2f}) ≈ Librosa ({librosa_bpm:.2f}) "
+                f"→ consensus={consensus:.2f}"
+            )
+            return consensus
+
+        if (
+            librosa_bpm is not None
+            and librosa_bpm > 0
+            and expected_bpm
+            and expected_bpm > 0
+        ):
+            ratio = librosa_bpm / expected_bpm
+            if 0.85 <= ratio <= 1.15:
+                print(
+                    f"📚 Trusting librosa: {librosa_bpm:.2f} "
+                    f"(close to target {expected_bpm})"
+                )
+                return librosa_bpm
+
+        if essentia_corrected > 0 and expected_bpm and expected_bpm > 0:
+            ratio = essentia_corrected / expected_bpm
+            if 0.85 <= ratio <= 1.15:
+                print(
+                    f"🎯 Low confidence ({confidence:.2f}) but octave-corrected "
+                    f"essentia is plausible: raw={raw_detected:.2f} → "
+                    f"{essentia_corrected:.2f} (target={expected_bpm})"
+                )
+                return essentia_corrected
+
+        librosa_str = f"{librosa_bpm:.2f}" if librosa_bpm else "failed"
+        print(
+            f"⚠️ No reliable BPM consensus: essentia={raw_detected:.2f} "
+            f"(conf={confidence:.2f}), librosa={librosa_str} — skipping stretch"
+        )
+        return None
 
     except Exception as e:
-        print(f"⚠️ Essentia BPM failed: {e}")
+        print(f"⚠️ BPM detection failed: {e}")
         return None
 
 
