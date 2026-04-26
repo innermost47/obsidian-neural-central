@@ -188,7 +188,7 @@ def stretch_audio_to_bpm(
     detected_bpm: Optional[float],
     target_bpm: Optional[float],
     max_bpm_diff: float = 0.5,
-    max_stretch_for_percussive: float = 0.10,
+    max_stretch_for_percussive: float = 0.12,
     max_stretch_for_melodic: float = 0.15,
     force_stretch: bool = False,
 ) -> np.ndarray:
