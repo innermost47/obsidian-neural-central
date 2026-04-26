@@ -24,16 +24,33 @@ async def detect_bpm(
         def process():
             audio_float = audio_mono.astype(np.float32)
             rhythm_extractor = es.RhythmExtractor2013(method="multifeature")
-            bpm, _, confidence, _, _ = rhythm_extractor(audio_float)
-            return float(bpm), float(confidence)
+            result = rhythm_extractor(audio_float)
+            bpm = float(result[0])
+            confidence = float(result[2]) if len(result) > 2 else 0.0
+            return bpm, confidence
 
         detected, confidence = await loop.run_in_executor(executor, process)
         raw_detected = detected
 
         if confidence < 1.5:
+            if expected_bpm and expected_bpm > 0 and detected > 0:
+                while detected > (expected_bpm * 1.5):
+                    detected /= 2.0
+                while detected < (expected_bpm * 0.67):
+                    detected *= 2.0
+
+                ratio_to_target = detected / expected_bpm
+                if 0.85 <= ratio_to_target <= 1.15:
+                    print(
+                        f"🎯 Low confidence ({confidence:.2f}) but octave-corrected "
+                        f"to plausible value: raw={raw_detected:.2f} → {detected:.2f} "
+                        f"(target={expected_bpm})"
+                    )
+                    return detected
+
             print(
                 f"⚠️ Low confidence BPM detection ({confidence:.2f}), "
-                f"detected={detected:.1f} — skipping stretch"
+                f"detected={raw_detected:.1f} — skipping stretch"
             )
             return None
 
