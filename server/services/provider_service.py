@@ -347,9 +347,12 @@ class ProviderService:
                     return None, None
 
                 snapped_bpm = None
-                if model == "foundation-1":
-                    raw = response.headers.get("X-Snapped-BPM")
-                    snapped_bpm = int(raw) if raw else bpm
+                raw = response.headers.get("X-Snapped-BPM")
+                if raw:
+                    try:
+                        snapped_bpm = int(raw)
+                    except (ValueError, TypeError):
+                        snapped_bpm = None
 
                 return response.content, snapped_bpm
 
