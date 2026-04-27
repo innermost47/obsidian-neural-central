@@ -321,32 +321,35 @@ async def fetch_audio_bytes(result: dict) -> bytes:
             response = await client.get(result["audio_url"])
             response.raise_for_status()
             raw_content = response.content
-
     try:
         audio_data, sr = librosa.load(io.BytesIO(raw_content), sr=None, mono=False)
-
         mono_for_trim = (
             librosa.to_mono(audio_data) if audio_data.ndim == 2 else audio_data
         )
         non_silent = librosa.effects.split(
             mono_for_trim, top_db=60, frame_length=2048, hop_length=512
         )
-
         if len(non_silent) > 0:
             start_sample = non_silent[0][0]
             preroll = int(0.01 * sr)
             start_sample = max(0, start_sample - preroll)
-
             if audio_data.ndim == 2:
                 trimmed_audio = audio_data[:, start_sample:]
             else:
                 trimmed_audio = audio_data[start_sample:]
-
             removed_ms = (start_sample / sr) * 1000
             if removed_ms > 5:
                 print(f"✂️ Trimmed {removed_ms:.1f}ms of leading silence")
         else:
             trimmed_audio = audio_data
+
+        fade_samples = int(0.005 * sr)
+        if fade_samples > 0 and trimmed_audio.shape[-1] > fade_samples:
+            fade_curve = np.linspace(0.0, 1.0, fade_samples, dtype=trimmed_audio.dtype)
+            if trimmed_audio.ndim == 2:
+                trimmed_audio[:, :fade_samples] *= fade_curve
+            else:
+                trimmed_audio[:fade_samples] *= fade_curve
 
         buffer = io.BytesIO()
         sf.write(
@@ -356,7 +359,6 @@ async def fetch_audio_bytes(result: dict) -> bytes:
             format="WAV",
         )
         return buffer.getvalue()
-
     except Exception as e:
         print(f"⚠️ Error while trimming silence: {e}")
         return raw_content
