@@ -809,7 +809,9 @@ class ProviderService:
             if s.date < now.date() and s.is_eligible_for_payout == True
         )
 
-        days_elapsed_for_provider = max(0, (now.date() - effective_start).days)
+        days_since_join = (now.date() - effective_start).days + 1
+        days_left_in_month = days_in_month - now.day
+        total_target_days = days_since_join + days_left_in_month
 
         return {
             "month_hours": month_hours,
@@ -829,5 +831,5 @@ class ProviderService:
             "total_active_days": total_active_days,
             "days_in_month": days_in_month,
             "days_present": validated_days_count,
-            "days_required": days_elapsed_for_provider,
+            "days_required": total_target_days,
         }
