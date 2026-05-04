@@ -10,8 +10,7 @@ from fastapi import (
 import asyncio
 from sqlalchemy.orm import Session
 from sqlalchemy import func
-from datetime import datetime, timezone, timedelta
-import secrets
+from datetime import datetime, timezone
 import hashlib
 from server.core.database import get_db, User, Provider, ProviderJob
 from server.api.dependencies import get_verified_user
@@ -120,6 +119,8 @@ def get_my_provider_stats(
             "month_required_hours": uptime_data["required_hours_total"],
             "month_hours_remaining": uptime_data["month_hours_remaining"],
             "month_progress_pct": uptime_data["month_progress_pct"],
+            "days_present": uptime_data["days_present"],
+            "days_required": uptime_data["days_required"],
         },
         "network": {
             "global_generations_this_month": global_generations_month,

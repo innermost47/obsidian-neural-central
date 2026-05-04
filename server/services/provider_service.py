@@ -795,6 +795,14 @@ class ProviderService:
         total_active_days = days_active_this_month + days_remaining_in_month
         required_hours_total = round(total_active_days * 8 * 0.8, 1)
 
+        validated_days_count = sum(
+            1
+            for s in stats_month
+            if s.date < now.date() and s.is_eligible_for_payout == True
+        )
+
+        days_elapsed_for_provider = max(0, (now.date() - effective_start).days)
+
         return {
             "month_hours": month_hours,
             "last_24h_hours": round(minutes_24h / 60, 1),
@@ -812,4 +820,6 @@ class ProviderService:
             "days_remaining_in_month": days_remaining_in_month,
             "total_active_days": total_active_days,
             "days_in_month": days_in_month,
+            "days_present": validated_days_count,
+            "days_required": days_elapsed_for_provider,
         }
