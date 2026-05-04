@@ -319,6 +319,11 @@ class ProviderPingService:
         provider_name: str,
         month: str,
     ) -> Optional[str]:
+        if amount_cents < 1:
+            print(
+                f"⚠️  Skipped {provider_name} — amount is {amount_cents} cents (too low)"
+            )
+            return None
         try:
             import stripe
             from server.config import settings
