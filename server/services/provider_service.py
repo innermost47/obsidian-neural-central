@@ -724,7 +724,7 @@ class ProviderService:
     def _update_daily_stats(db: Session, provider_id: int, minutes_to_add: float):
         from server.core.database import ProviderDailyStats
         from sqlalchemy.dialects.postgresql import insert
-        from sqlalchemy import cast, Integer
+        from sqlalchemy import case
 
         today = datetime.now(timezone.utc).date()
 
@@ -740,9 +740,13 @@ class ProviderService:
             set_={
                 "total_presence_minutes": ProviderDailyStats.total_presence_minutes
                 + minutes_to_add,
-                "is_eligible_for_payout": cast(
-                    (ProviderDailyStats.total_presence_minutes + minutes_to_add) >= 480,
-                    Integer,
+                "is_eligible_for_payout": case(
+                    (
+                        ProviderDailyStats.total_presence_minutes + minutes_to_add
+                        >= 480,
+                        True,
+                    ),
+                    else_=False,
                 ),
             },
         )
