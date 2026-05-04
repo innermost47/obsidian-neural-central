@@ -26,7 +26,6 @@ import asyncio
 import random
 import json
 
-
 router = APIRouter(tags=["Generation"])
 
 DEFAULT_MODEL = "stable-audio-open-1.0"
@@ -174,6 +173,16 @@ IMPORTANT: These user-selected keywords MUST be incorporated and emphasized in y
 
     else:
         print("📝 Text-to-audio mode")
+        if not request.use_llm:
+            print("🎛️ Direct Audio Processing Mode - No LLM")
+            return {
+                "model": DEFAULT_MODEL,
+                "prompt": request.prompt,
+                "bpm": request.bpm,
+                "key": request.key,
+                "bars": None,
+                "duration": int(request.generation_duration),
+            }
         current_key = request.key if request.key else context.get("key", "C minor")
 
         llm_messages = []
@@ -217,23 +226,23 @@ STRICT INSTRUCTIONS:
         else:
             print("⚠️ ProviderLLMService failed, falling back to fal.ai...")
 
-        prompt = await FalService.optimize_prompt_with_llm(
-            request.prompt,
-            context=context,
-            user_id=current_user.id,
-            db=db,
-            key=request.key,
-            forced_model=request.model,
-            bpm=request.bpm,
-        )
-        return {
-            "model": DEFAULT_MODEL,
-            "prompt": prompt,
-            "bpm": request.bpm,
-            "key": request.key,
-            "bars": None,
-            "duration": int(request.generation_duration),
-        }
+            prompt = await FalService.optimize_prompt_with_llm(
+                request.prompt,
+                context=context,
+                user_id=current_user.id,
+                db=db,
+                key=request.key,
+                forced_model=request.model,
+                bpm=request.bpm,
+            )
+            return {
+                "model": DEFAULT_MODEL,
+                "prompt": prompt,
+                "bpm": request.bpm,
+                "key": request.key,
+                "bars": None,
+                "duration": int(request.generation_duration),
+            }
 
 
 @router.post("/generate")
