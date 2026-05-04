@@ -173,8 +173,8 @@ IMPORTANT: These user-selected keywords MUST be incorporated and emphasized in y
 
     else:
         print("📝 Text-to-audio mode")
-        if not request.use_llm:
-            print("🎛️ Direct Audio Processing Mode - No LLM")
+        if request.bypass_llm:
+            print("🎛️ Direct Audio Processing Mode - Bypass LLM")
             return {
                 "model": DEFAULT_MODEL,
                 "prompt": request.prompt,
