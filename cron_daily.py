@@ -2,6 +2,7 @@ from pathlib import Path
 from dotenv import load_dotenv
 import os
 import sys
+import logging
 
 ENV = os.getenv("ENV", "prod")
 env_file = Path(__file__).resolve().parent.parent / f".env.{ENV}"
@@ -26,9 +27,23 @@ from dateutil.relativedelta import relativedelta
 
 CODE_VALIDITY_DAYS = 365
 
+LOG_DIR = ROOT / "logs"
+LOG_DIR.mkdir(exist_ok=True)
+LOG_FILE = LOG_DIR / "cron_tasks.log"
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s UTC | %(levelname)-8s | %(message)s",
+    datefmt="%Y-%m-%d %H:%M:%S",
+    handlers=[
+        logging.FileHandler(LOG_FILE, encoding="utf-8"),
+        logging.StreamHandler(sys.stdout),
+    ],
+)
+
 
 def log(msg: str):
-    print(f"[{datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')} UTC] {msg}", flush=True)
+    logging.info(msg)
 
 
 def check_and_send_followup_emails():
