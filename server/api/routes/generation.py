@@ -55,7 +55,7 @@ def _extract_json(text: str) -> str:
 
 def _parse_llm_decision(decision: dict, request) -> dict:
     sample = decision.get("parameters", {}).get("sample_details", {})
-    model = decision.get("model", DEFAULT_MODEL)
+    model = request.model
     prompt = sample.get("prompt", request.prompt)
     key = sample.get("key") or request.key
     bpm = sample.get("bpm") or request.bpm
@@ -176,7 +176,7 @@ IMPORTANT: These user-selected keywords MUST be incorporated and emphasized in y
         if request.bypass_llm:
             print("🎛️ Direct Audio Processing Mode - Bypass LLM")
             return {
-                "model": DEFAULT_MODEL,
+                "model": request.model,
                 "prompt": request.prompt,
                 "bpm": request.bpm,
                 "key": request.key,
