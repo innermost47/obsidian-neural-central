@@ -422,7 +422,7 @@ def build_response_headers(
     provider_name: str,
     used_fallback: bool,
 ) -> dict:
-    return {
+    response_headers = {
         "X-Duration": str(duration),
         "X-BPM": str(request_bpm),
         "X-Detected-BPM": str(detected_bpm) if detected_bpm else "",
@@ -432,5 +432,7 @@ def build_response_headers(
         "X-Sample-Rate": str(target_sr),
         "X-Provider": sanitize_header(provider_name),
         "X-Used-Fallback": str(used_fallback),
-        "X-Snapped-BPM": str(snapped_bpm) if snapped_bpm else "",
     }
+    if snapped_bpm:
+        response_headers["X-Snapped-BPM"] = str(snapped_bpm)
+    return response_headers
