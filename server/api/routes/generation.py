@@ -309,36 +309,38 @@ async def generate_audio(
         )
         audio_data = await fetch_audio_bytes(result)
         audio, original_sr = await load_audio_original(audio_data)
-        IMPRECISE_MODELS = [
-            "stable-audio-open-1.0",
-            "stablebeat",
-            "sao-instrumental",
-            "gluten-v1",
-        ]
-        if resolved["model"] in IMPRECISE_MODELS:
-            detected_bpm = await detect_bpm(
-                audio, original_sr, expected_bpm=float(resolved["bpm"])
-            )
-            if detected_bpm is not None:
-                audio = stretch_audio_to_bpm(
-                    audio, original_sr, detected_bpm, float(resolved["bpm"])
+
+        if request.sync_on_server:
+            IMPRECISE_MODELS = [
+                "stable-audio-open-1.0",
+                "stablebeat",
+                "sao-instrumental",
+                "gluten-v1",
+            ]
+            if resolved["model"] in IMPRECISE_MODELS:
+                detected_bpm = await detect_bpm(
+                    audio, original_sr, expected_bpm=float(resolved["bpm"])
                 )
+                if detected_bpm is not None:
+                    audio = stretch_audio_to_bpm(
+                        audio, original_sr, detected_bpm, float(resolved["bpm"])
+                    )
+                else:
+                    print(
+                        f"⚠️ Skipping stretch for {resolved['model']}: "
+                        f"BPM detection unreliable, audio used as-is"
+                    )
             else:
-                print(
-                    f"⚠️ Skipping stretch for {resolved['model']}: "
-                    f"BPM detection unreliable, audio used as-is"
-                )
-        else:
-            snapped_bpm = result.get("snapped_bpm")
-            detected_bpm = float(snapped_bpm) if snapped_bpm else None
-            if snapped_bpm and int(snapped_bpm) != int(resolved["bpm"]):
-                audio = stretch_audio_to_bpm(
-                    audio,
-                    original_sr,
-                    float(snapped_bpm),
-                    float(resolved["bpm"]),
-                    force_stretch=True,
-                )
+                snapped_bpm = result.get("snapped_bpm")
+                detected_bpm = float(snapped_bpm) if snapped_bpm else None
+                if snapped_bpm and int(snapped_bpm) != int(resolved["bpm"]):
+                    audio = stretch_audio_to_bpm(
+                        audio,
+                        original_sr,
+                        float(snapped_bpm),
+                        float(resolved["bpm"]),
+                        force_stretch=True,
+                    )
 
         target_samples = int(round(float(request.generation_duration) * original_sr))
         if audio.ndim == 2:
@@ -384,6 +386,7 @@ async def generate_audio(
             media_type="audio/wav",
             headers=build_response_headers(
                 duration=duration,
+                snapped_bpm=snapped_bpm,
                 request_bpm=resolved["bpm"],
                 detected_bpm=detected_bpm,
                 key=resolved["key"],

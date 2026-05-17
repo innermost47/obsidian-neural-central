@@ -413,6 +413,7 @@ def sanitize_header(value: str) -> str:
 def build_response_headers(
     duration: float,
     request_bpm: int,
+    snapped_bpm: int,
     detected_bpm: float | None,
     key: str | None,
     remaining_after: int,
@@ -431,4 +432,5 @@ def build_response_headers(
         "X-Sample-Rate": str(target_sr),
         "X-Provider": sanitize_header(provider_name),
         "X-Used-Fallback": str(used_fallback),
+        "X-Snapped-BPM": str(snapped_bpm),
     }

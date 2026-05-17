@@ -58,6 +58,7 @@ class GenerateRequest(BaseModel):
     image_temperature: Optional[float] = 0.7
     keywords: Optional[List[str]] = []
     bypass_llm: Optional[bool] = False
+    sync_on_server: Optional[bool] = True
 
     model_config = ConfigDict(
         protected_namespaces=(),
