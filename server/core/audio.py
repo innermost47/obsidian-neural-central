@@ -413,7 +413,7 @@ def sanitize_header(value: str) -> str:
 def build_response_headers(
     duration: float,
     request_bpm: int,
-    snapped_bpm: int,
+    snapped_bpm: float | None,
     detected_bpm: float | None,
     key: str | None,
     remaining_after: int,
