@@ -309,7 +309,7 @@ async def generate_audio(
         )
         audio_data = await fetch_audio_bytes(result)
         audio, original_sr = await load_audio_original(audio_data)
-        snapped_bpm = None
+        snapped_bpm = result.get("snapped_bpm")
         detected_bpm = None
         if request.sync_on_server:
             IMPRECISE_MODELS = [
@@ -332,7 +332,6 @@ async def generate_audio(
                         f"BPM detection unreliable, audio used as-is"
                     )
             else:
-                snapped_bpm = result.get("snapped_bpm")
                 detected_bpm = float(snapped_bpm) if snapped_bpm else None
                 if snapped_bpm and int(snapped_bpm) != int(resolved["bpm"]):
                     audio = stretch_audio_to_bpm(
