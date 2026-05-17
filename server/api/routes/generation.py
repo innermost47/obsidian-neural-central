@@ -310,6 +310,7 @@ async def generate_audio(
         audio_data = await fetch_audio_bytes(result)
         audio, original_sr = await load_audio_original(audio_data)
         snapped_bpm = None
+        detected_bpm = None
         if request.sync_on_server:
             IMPRECISE_MODELS = [
                 "stable-audio-open-1.0",

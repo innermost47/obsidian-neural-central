@@ -432,5 +432,5 @@ def build_response_headers(
         "X-Sample-Rate": str(target_sr),
         "X-Provider": sanitize_header(provider_name),
         "X-Used-Fallback": str(used_fallback),
-        "X-Snapped-BPM": str(snapped_bpm),
+        "X-Snapped-BPM": str(snapped_bpm) if snapped_bpm else "",
     }
