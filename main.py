@@ -60,9 +60,23 @@ async def lifespan(app: FastAPI):
     logger.info("✅ Database initialized")
     db = SessionLocal()
     try:
-        db.query(Provider).update({Provider.is_online: False})
+        reset_count = (
+            db.query(Provider)
+            .filter(
+                Provider.is_active == True,
+                Provider.activation_token_used == True,
+            )
+            .update(
+                {
+                    Provider.is_online: False,
+                    Provider.is_generating: False,
+                    Provider.is_generating_llm: False,
+                    Provider.is_disposable: True,
+                }
+            )
+        )
         db.commit()
-        logger.info("✅ Providers status reset to offline")
+        logger.info(f"✅ Reset transient flags on {reset_count} active providers")
     except Exception as e:
         logger.error(f"❌ Failed to reset providers status: {e}")
         db.rollback()
