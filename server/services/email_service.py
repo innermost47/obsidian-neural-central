@@ -221,10 +221,8 @@ class EmailService:
             base_template(
                 content,
                 preheader="Please verify your email to activate your account.",
-                unsubscribe_token=unsub,
             ),
             email_type="verification",
-            unsubscribe_url=get_unsubscribe_url(unsub),
             user_id=user_id,
             db=db,
         )
@@ -263,9 +261,6 @@ class EmailService:
     def send_subscription_confirmation(
         email: str, tier: str, user_id: int = None, db: Session = None
     ) -> bool:
-        unsub = (
-            EmailService._get_unsubscribe_token(user_id, db) if (db and user_id) else ""
-        )
         tier_display = tier.capitalize()
         credits = settings.TIER_CREDITS.get(tier, 0)
 
@@ -296,10 +291,8 @@ class EmailService:
             base_template(
                 content,
                 preheader=f"Your {tier_display} plan is now active.",
-                unsubscribe_token=unsub,
             ),
             email_type="subscription_confirmation",
-            unsubscribe_url=get_unsubscribe_url(unsub),
             user_id=user_id,
             db=db,
         )
@@ -308,10 +301,6 @@ class EmailService:
     def send_subscription_cancelled(
         email: str, user_id: int = None, db: Session = None
     ) -> bool:
-        unsub = (
-            EmailService._get_unsubscribe_token(user_id, db) if (db and user_id) else ""
-        )
-
         content = f"""
         {section_title("Subscription cancelled")}
         <h1 style="color:#1a1a1a;font-size:24px;font-weight:700;margin:0 0 16px;">
@@ -333,10 +322,8 @@ class EmailService:
             base_template(
                 content,
                 preheader="You still have access until the end of your billing period.",
-                unsubscribe_token=unsub,
             ),
             email_type="subscription_cancelled",
-            unsubscribe_url=get_unsubscribe_url(unsub),
             user_id=user_id,
             db=db,
         )
