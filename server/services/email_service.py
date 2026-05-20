@@ -13,6 +13,7 @@ from server.templates.email_template import (
     stat_row,
     section_title,
     download_buttons,
+    get_unsubscribe_url,
 )
 
 from concurrent.futures import ThreadPoolExecutor
@@ -38,6 +39,7 @@ class EmailService:
         to_email: str,
         subject: str,
         html_body: str,
+        unsubscribe_url: str = None,
         email_type: str = "unknown",
         user_id: int = None,
         db: Session = None,
@@ -68,6 +70,9 @@ class EmailService:
                 msg["From"] = settings.SMTP_FROM_EMAIL
                 msg["To"] = to_email
                 msg.attach(MIMEText(html_body, "html", "utf-8"))
+                if unsubscribe_url:
+                    msg["List-Unsubscribe"] = f"<{unsubscribe_url}>"
+                    msg["List-Unsubscribe-Post"] = "List-Unsubscribe=One-Click"
 
                 with smtplib.SMTP_SSL(
                     settings.SMTP_HOST, settings.SMTP_PORT, timeout=30
@@ -168,7 +173,7 @@ class EmailService:
 
         return EmailService._send_email(
             email,
-            "🎉 Welcome to OBSIDIAN Neural — Your API Key Inside",
+            "Welcome to OBSIDIAN Neural — Your API Key Inside",
             base_template(
                 content,
                 preheader="Your API key and everything you need to get started.",
@@ -176,6 +181,7 @@ class EmailService:
             ),
             email_type="welcome",
             user_id=user_id,
+            unsubscribe_url=get_unsubscribe_url(unsub),
             db=db,
         )
 
@@ -210,6 +216,7 @@ class EmailService:
                 unsubscribe_token=unsub,
             ),
             email_type="verification",
+            unsubscribe_url=get_unsubscribe_url(unsub),
             user_id=user_id,
             db=db,
         )
@@ -284,6 +291,7 @@ class EmailService:
                 unsubscribe_token=unsub,
             ),
             email_type="subscription_confirmation",
+            unsubscribe_url=get_unsubscribe_url(unsub),
             user_id=user_id,
             db=db,
         )
@@ -320,6 +328,7 @@ class EmailService:
                 unsubscribe_token=unsub,
             ),
             email_type="subscription_cancelled",
+            unsubscribe_url=get_unsubscribe_url(unsub),
             user_id=user_id,
             db=db,
         )
@@ -439,6 +448,7 @@ class EmailService:
                 unsubscribe_token=unsub,
             ),
             email_type="expiration_warning",
+            unsubscribe_url=get_unsubscribe_url(unsub),
             user_id=user_id,
             db=db,
         )
@@ -499,6 +509,7 @@ class EmailService:
                 unsubscribe_token=unsub,
             ),
             email_type="no_generation_help",
+            unsubscribe_url=get_unsubscribe_url(unsub),
             user_id=user_id,
             db=db,
         )
@@ -582,6 +593,7 @@ class EmailService:
             t["subject"],
             base_template(content, preheader=t["preheader"], unsubscribe_token=unsub),
             email_type=f"week{week_number}_inspiration",
+            unsubscribe_url=get_unsubscribe_url(unsub),
             user_id=user_id,
             db=db,
         )
@@ -650,6 +662,7 @@ class EmailService:
                 unsubscribe_token=unsub,
             ),
             email_type="press_welcome",
+            unsubscribe_url=get_unsubscribe_url(unsub),
             user_id=user_id,
             db=db,
         )
@@ -874,6 +887,7 @@ class EmailService:
                 unsubscribe_token=unsub,
             ),
             email_type="day2_promo",
+            unsubscribe_url=get_unsubscribe_url(unsub),
             user_id=user_id,
             db=db,
         )
@@ -922,6 +936,7 @@ class EmailService:
                 unsubscribe_token=unsub,
             ),
             email_type="day7_promo",
+            unsubscribe_url=get_unsubscribe_url(unsub),
             user_id=user_id,
             db=db,
         )

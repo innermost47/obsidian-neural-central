@@ -1,18 +1,21 @@
 from server.config import settings
 
 
-def base_template(
-    content_html: str,
-    preheader: str = "",
-    unsubscribe_token: str = "",
-    title: str = "OBSIDIAN Neural",
-) -> str:
-    unsubscribe_url = (
+def get_unsubscribe_url(unsubscribe_token: str = None):
+    return (
         f"{settings.APP_URL}/api/v1/auth/unsubscribe?token={unsubscribe_token}"
         if unsubscribe_token
         else f"{settings.APP_URL}/api/v1/auth/unsubscribe"
     )
 
+
+def base_template(
+    content_html: str,
+    preheader: str = None,
+    unsubscribe_token: str = None,
+    title: str = "OBSIDIAN Neural",
+) -> str:
+    unsubscribe_url = get_unsubscribe_url(unsubscribe_token)
     preheader_html = (
         f'<div style="display:none;max-height:0;overflow:hidden;mso-hide:all;">'
         f"{preheader}&nbsp;‌&nbsp;‌&nbsp;‌&nbsp;‌&nbsp;‌&nbsp;‌&nbsp;‌&nbsp;‌&nbsp;‌&nbsp;‌"
@@ -86,12 +89,7 @@ def base_template(
                     &nbsp;&bull;&nbsp;
                     <a href="{settings.FRONTEND_URL}/dashboard.php" style="color:#cccccc;text-decoration:none;">Dashboard</a>
                   </p>
-                  <p style="margin:0 0 8px;color:#cccccc;">
-                    Presented at AES AIMLA 2025 &mdash; Queen Mary University London
-                  </p>
-                  <p style="margin:0;">
-                    <a href="{unsubscribe_url}" style="color:#cccccc;text-decoration:underline;font-size:11px;">Unsubscribe from marketing emails</a>
-                  </p>
+                  {'<p style="margin:0;"><a href="' + unsubscribe_url + '" style="color:#cccccc;text-decoration:underline;font-size:11px;">Unsubscribe from marketing emails</a></p>' if unsubscribe_token else ''}
                 </td>
               </tr>
             </table>
