@@ -135,7 +135,7 @@ class EmailService:
           <span style="color:#b8605c;">Let's make some music.</span>
         </h1>
         <p style="color:#4a4a4a;font-size:15px;line-height:1.7;margin:0 0 24px;">
-          You have <strong>10 free credits</strong> to get started. Here's everything you need.
+          You have <strong>20 free credits</strong> to get started. Here's everything you need.
         </p>
 
         {section_title("Your credentials")}
