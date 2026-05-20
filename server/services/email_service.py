@@ -1,5 +1,9 @@
 import smtplib
 import logging
+import uuid
+import re
+from email.mime.text import MIMEText
+from email.utils import formatdate
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from sqlalchemy.orm import Session
@@ -69,6 +73,10 @@ class EmailService:
                 msg["Subject"] = subject
                 msg["From"] = settings.SMTP_FROM_EMAIL
                 msg["To"] = to_email
+                msg["Message-ID"] = f"<{uuid.uuid4()}@obsidian-neural.com>"
+                msg["Date"] = formatdate(localtime=False)
+                text_body = re.sub(r"<[^>]+>", "", html_body)
+                msg.attach(MIMEText(text_body, "plain", "utf-8"))
                 msg.attach(MIMEText(html_body, "html", "utf-8"))
                 if unsubscribe_url:
                     msg["List-Unsubscribe"] = f"<{unsubscribe_url}>"
