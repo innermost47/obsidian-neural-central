@@ -82,7 +82,7 @@ def base_template(
                   <p style="margin:0 0 8px;">
                     <a href="{settings.FRONTEND_URL}" style="color:#b8605c;text-decoration:none;font-weight:600;">{settings.FRONTEND_URL}</a>
                     &nbsp;&bull;&nbsp;
-                    <a href="{settings.REPO_URL} style="color:#cccccc;text-decoration:none;">GitHub</a>
+                    <a href="{settings.REPO_URL}" style="color:#cccccc;text-decoration:none;">GitHub</a>
                     &nbsp;&bull;&nbsp;
                     <a href="{settings.FRONTEND_URL}/dashboard.php" style="color:#cccccc;text-decoration:none;">Dashboard</a>
                   </p>

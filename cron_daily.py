@@ -46,6 +46,14 @@ def log(msg: str):
     logging.info(msg)
 
 
+def day_window(now: datetime, days_ago: int):
+    d = now - timedelta(days=days_ago)
+    return (
+        d.replace(hour=0, minute=0, second=0, microsecond=0),
+        d.replace(hour=23, minute=59, second=59, microsecond=999999),
+    )
+
+
 def check_and_send_followup_emails():
     db = SessionLocal()
     now = datetime.utcnow()
@@ -63,12 +71,11 @@ def check_and_send_followup_emails():
     try:
         log("Starting followup email check...")
 
-        day2_start = now - timedelta(days=2, hours=1)
-        day2_end = now - timedelta(days=2)
+        day2_start, day2_end = day_window(now, 2)
         for user in (
             db.query(User)
             .filter(
-                User.created_at.between(day2_end, day2_start),
+                User.created_at.between(day2_start, day2_end),
                 User.subscription_tier == "none",
                 User.accept_news_updates == True,
                 User.email_verified == True,
@@ -84,8 +91,7 @@ def check_and_send_followup_emails():
             except Exception as e:
                 log(f"❌ J+2 failed for {user.email}: {e}")
 
-        day7_start = now - timedelta(days=7, hours=1)
-        day7_end = now - timedelta(days=7)
+        day7_start, day7_end = day_window(now, 7)
         for user in (
             db.query(User)
             .filter(
@@ -123,9 +129,7 @@ def check_and_send_followup_emails():
                 log(f"❌ J+7 help failed for {user.email}: {e}")
 
         for week_number in [2, 3, 4]:
-            days = week_number * 7
-            week_start = now - timedelta(days=days, hours=1)
-            week_end = now - timedelta(days=days)
+            week_start, week_end = day_window(now, week_number * 7)
             for user in (
                 db.query(User)
                 .filter(

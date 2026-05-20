@@ -360,7 +360,7 @@ class EmailService:
         content = f"""
         {section_title("You received a gift")}
         <h1 style="color:#1a1a1a;font-size:24px;font-weight:700;margin:0 0 8px;">
-          {purchaser_name} gifted you OBSIDIAN Neural 🎁
+          {purchaser_name} gifted you OBSIDIAN Neural
         </h1>
         <p style="color:#4a4a4a;font-size:15px;line-height:1.7;margin:0 0 24px;">
           You have <strong>{duration_months} month{"s" if duration_months > 1 else ""}</strong> of the <strong>{tier_display}</strong> plan — worth <strong>&euro;{total_value:.2f}</strong>.
@@ -492,7 +492,7 @@ class EmailService:
 
         return EmailService._send_email(
             email,
-            "🆘 Need help getting started with OBSIDIAN Neural?",
+            "Need help getting started with OBSIDIAN Neural?",
             base_template(
                 content,
                 preheader="You haven't generated anything yet. Here's how to get started in 3 steps.",
@@ -513,7 +513,7 @@ class EmailService:
 
         templates = {
             2: {
-                "subject": "🎵 5 creative ways to use OBSIDIAN Neural",
+                "subject": "5 creative ways to use OBSIDIAN Neural",
                 "preheader": "Ideas to integrate AI generation into your real workflow.",
                 "h1": "5 ideas for your workflow",
                 "body": f"""
@@ -530,7 +530,7 @@ class EmailService:
                 """,
             },
             3: {
-                "subject": "🎛️ Features you might have missed",
+                "subject": "Features you might have missed",
                 "preheader": "BPM sync, multi-output, MIDI learn — hidden power inside the plugin.",
                 "h1": "You might have missed these",
                 "body": f"""
@@ -547,7 +547,7 @@ class EmailService:
                 """,
             },
             4: {
-                "subject": "💬 How's it going?",
+                "subject": "How's it going?",
                 "preheader": "One last check-in — I'd love to hear how you're using OBSIDIAN Neural.",
                 "h1": "How's it going?",
                 "body": f"""
@@ -665,14 +665,14 @@ class EmailService:
         db: Session = None,
     ) -> bool:
         subject_labels = {
-            "support": "🔧 Technical Support",
-            "billing": "💳 Billing",
-            "feature": "✨ Feature Request",
-            "bug": "🐛 Bug Report",
-            "partnership": "🤝 Partnership",
-            "other": "💬 Other",
+            "support": "Technical Support",
+            "billing": "Billing",
+            "feature": "Feature Request",
+            "bug": "Bug Report",
+            "partnership": "Partnership",
+            "other": "Other",
         }
-        label = subject_labels.get(subject, "💬 Contact")
+        label = subject_labels.get(subject, "Contact")
 
         content = f"""
         {section_title("Contact form")}
@@ -809,7 +809,7 @@ class EmailService:
 
         return EmailService._send_email(
             admin_email,
-            f"📊 Daily email report — {total} sent",
+            f"Daily email report — {total} sent",
             base_template(content, preheader=f"{total} automated emails sent today."),
             email_type="admin_report",
             db=db,
@@ -867,7 +867,7 @@ class EmailService:
 
         return EmailService._send_email(
             email,
-            "⏰ Your 100% OFF code is waiting — OBSIDIAN100",
+            "Your 100% OFF code is waiting — OBSIDIAN100",
             base_template(
                 content,
                 preheader="You joined 2 days ago. Your free month is still available — code OBSIDIAN100.",
