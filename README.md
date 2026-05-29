@@ -47,7 +47,7 @@ FastAPI central server
 
 ### Provider Capabilities
 
-Each provider node acts as a **Multi-Engine AI Workstation**. The central server dynamically routes requests to one of the 8 specialized models selected by the musician in the VST.
+Each provider node acts as a **Multi-Engine AI Workstation**. The central server dynamically routes requests to one of the 9 specialized models selected by the musician in the VST.
 
 | Stack     | Engines (Specialized Models) | Purpose / Musical Specialty                          |
 | :-------- | :--------------------------- | :--------------------------------------------------- |
@@ -59,6 +59,7 @@ Each provider node acts as a **Multi-Engine AI Workstation**. The central server
 |           | **SAO Instrumental**         | Modern indie, rock, and lofi stems.                  |
 |           | **StableBeaT**               | Advanced trap drum machine and 808 grooves.          |
 |           | **Gluten-V1**                | Melodic loops for trap and wavy motifs.              |
+|           | **Stable Audio 3 Medium**    | Next-gen flexible full tracks, isolated stems, FX.   |
 | **LLM**   | **Gemma 4** (via Ollama)     | Dynamic Prompt Injection & Vision Analysis.          |
 
 #### 🧠 Smart Orchestration Features

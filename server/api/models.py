@@ -42,6 +42,7 @@ class AIModelName(str, Enum):
     INSTRUMENTAL = "sao-instrumental"
     STABLEBEAT = "stablebeat"
     GLUTEN = "gluten-v1"
+    STABLE_AUDIO_3_MEDIUM = "stable-audio-3-medium"
 
 
 class GenerateRequest(BaseModel):
@@ -221,6 +222,7 @@ class SupportedModel(str, Enum):
     SAO_INSTRUMENTAL = "sao-instrumental"
     STABLEBEAT = "stablebeat"
     GLUTEN_V1 = "gluten-v1"
+    STABLE_AUDIO_3_MEDIUM = "stable-audio-3-medium"
 
 
 class SupportedModelId(str, Enum):
@@ -233,6 +235,7 @@ class SupportedModelId(str, Enum):
     SAO_INSTRUMENTAL = "innermost47/obsidian-neural-models"
     STABLEBEAT = "innermost47/obsidian-neural-models"
     GLUTEN_V1 = "innermost47/obsidian-neural-models"
+    STABLE_AUDIO_3_MEDIUM = "stabilityai/stable-audio-3-medium"
 
 
 class SupportedDevice(str, Enum):
