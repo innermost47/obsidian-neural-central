@@ -52,6 +52,7 @@ Each provider node acts as a **Multi-Engine AI Workstation**. The central server
 | Stack     | Engines (Specialized Models) | Purpose / Musical Specialty                          |
 | :-------- | :--------------------------- | :--------------------------------------------------- |
 | **Audio** | **Stable Audio Open 1.0**    | General purpose foundation for full-mix and loops.   |
+|           | **Stable Audio 3 Medium**    | Next-gen flexible full tracks, isolated stems, FX.   |
 |           | **Foundation-1**             | Surgical tag-based melodic & harmonic control.       |
 |           | **Audialab EDM Elements**    | High-energy leads, supersaws, and plucks.            |
 |           | **RC Infinite Pianos**       | High-fidelity grand and electric piano performances. |
@@ -59,7 +60,6 @@ Each provider node acts as a **Multi-Engine AI Workstation**. The central server
 |           | **SAO Instrumental**         | Modern indie, rock, and lofi stems.                  |
 |           | **StableBeaT**               | Advanced trap drum machine and 808 grooves.          |
 |           | **Gluten-V1**                | Melodic loops for trap and wavy motifs.              |
-|           | **Stable Audio 3 Medium**    | Next-gen flexible full tracks, isolated stems, FX.   |
 | **LLM**   | **Gemma 4** (via Ollama)     | Dynamic Prompt Injection & Vision Analysis.          |
 
 #### 🧠 Smart Orchestration Features
