@@ -1,11 +1,13 @@
 from fastapi import APIRouter, Request, HTTPException
-from server.core.database import User, GiftSubscription, GiftSubscriptionStatus
+from server.core.database import User, GiftSubscription, GiftSubscriptionStatus, License
 from server.services.stripe_service import StripeService
 from server.services.credits_service import CreditsService
 from server.services.email_service import EmailService
+from server.services.license_service import LicenseService
 from server.services.admin_notification_service import AdminNotificationService
 from server.services.provider_notification_service import ProviderNotificationService
 from server.core.database import SessionLocal
+from server.config import settings
 from datetime import datetime
 
 router = APIRouter(prefix="/webhooks", tags=["Webhooks"])
@@ -33,8 +35,11 @@ async def handle_stripe_webhook(request: Request):
 
     if event["type"] == "checkout.session.completed":
         session = event["data"]["object"]
-        if session.get("metadata", {}).get("type") == "gift_subscription":
+        session_type = session.get("metadata", {}).get("type")
+        if session_type == "gift_subscription":
             handle_gift_checkout_completed(session)
+        elif session_type == "vst_license":
+            handle_vst_license_completed(session)
         else:
             handle_successful_checkout(session)
 
@@ -321,5 +326,90 @@ def handle_subscription_created(subscription):
     except Exception as e:
         print(f"Error in handle_subscription_created: {e}")
         db.rollback()
+    finally:
+        db.close()
+
+def handle_vst_license_completed(session):
+    db = SessionLocal()
+    try:
+        email = session.get("customer_details", {}).get("email") or session.get(
+            "customer_email"
+        )
+        if not email:
+            raise ValueError("No email found in VST checkout session.")
+
+        email = email.strip().lower()
+
+        existing_license = (
+            db.query(License)
+            .filter(License.stripe_checkout_session_id == session["id"])
+            .first()
+        )
+        if existing_license:
+            print(f"⏩ VST license already created for session {session['id']}")
+            return
+
+        user = db.query(User).filter(User.email == email).first()
+        if not user:
+            from server.core.security import generate_api_key, encrypt_api_key
+
+            api_key = generate_api_key()
+            user = User(
+                email=email,
+                hashed_password=None,
+                api_key=encrypt_api_key(api_key),
+                credits_total=20,
+                credits_used=0,
+                email_verified=True,
+                accept_news_updates=True,
+                unsubscribe_token=str(__import__("uuid").uuid4()),
+            )
+            db.add(user)
+            db.commit()
+            db.refresh(user)
+
+            stripe_customer_id = StripeService.create_customer(
+                email=user.email, user_id=user.id
+            )
+            user.stripe_customer_id = stripe_customer_id
+            db.commit()
+
+        license_key = LicenseService.generate_license_key()
+        while db.query(License).filter(License.license_key == license_key).first():
+            license_key = LicenseService.generate_license_key()
+
+        new_license = License(
+            license_key=license_key,
+            user_id=user.id,
+            email=email,
+            tier="standard",
+            status="active",
+            max_activations=settings.LICENSE_MAX_ACTIVATIONS,
+            stripe_checkout_session_id=session["id"],
+            stripe_payment_intent_id=session.get("payment_intent"),
+            amount_paid=session.get("amount_total"),
+        )
+        db.add(new_license)
+        db.commit()
+
+        EmailService.send_vst_license_email(
+            email=email,
+            license_key=license_key,
+            user_id=user.id,
+            db=db,
+        )
+
+        print(f"🔑 VST license created: {license_key} for {email}")
+
+        AdminNotificationService.notify_new_vst_license(
+            email=email,
+            user_id=user.id,
+            license_key=license_key,
+            amount=f"{session.get('amount_total', 0) / 100:.2f}€ one-time",
+        )
+    except Exception as e:
+        print(f"Error creating VST license: {e}")
+        db.rollback()
+        raise
     finally:
         db.close()

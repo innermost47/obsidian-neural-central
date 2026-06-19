@@ -24,6 +24,7 @@ from server.api.routes import (
     admin_providers,
     public,
     unsubscribe,
+    license
 )
 from server.services.provider_verification_service import ProviderVerificationService
 
@@ -144,6 +145,7 @@ app.include_router(admin_providers.router, prefix="/api/v1")
 app.include_router(public.router, prefix="/api/v1")
 app.include_router(unsubscribe.router, prefix="/api/v1")
 app.include_router(providers.router, prefix="/api/v1")
+app.include_router(license.router, prefix="/api/v1")
 app.include_router(press.router)
 
 

@@ -296,3 +296,14 @@ class ProviderLLMResponse(BaseModel):
     model: str
     provider_key: str
     audio_model: Optional[SupportedModel] = None
+
+class LicenseActivateRequest(BaseModel):
+    key: str
+    machine_id: str
+
+class LicenseReleaseRequest(BaseModel):
+    key: str
+    machine_id: str
+
+class VstCheckoutRequest(BaseModel):
+    email: Optional[EmailStr] = None

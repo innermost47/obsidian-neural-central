@@ -935,3 +935,63 @@ class EmailService:
             user_id=user_id,
             db=db,
         )
+    
+    @staticmethod
+    def send_vst_license_email(
+        email: str, license_key: str, user_id: int = None, db: Session = None
+    ) -> bool:
+        unsub = EmailService._get_unsubscribe_token(user_id, db) if db else ""
+
+        content = f"""
+        {section_title("Your OBSIDIAN Neural license")}
+        <h1 style="color:#1a1a1a;font-size:26px;font-weight:700;margin:0 0 16px;line-height:1.3;">
+          Thank you for your purchase.<br/>
+          <span style="color:#b8605c;">Here's your license key.</span>
+        </h1>
+        <p style="color:#4a4a4a;font-size:15px;line-height:1.7;margin:0 0 24px;">
+          Keep this key safe — it's tied to your purchase and lets you activate
+          OBSIDIAN Neural on up to {settings.LICENSE_MAX_ACTIVATIONS} machines.
+        </p>
+
+        {info_box(f'''
+          <table cellpadding="0" cellspacing="0" border="0" width="100%">
+            {stat_row("License key", f'<code style="font-family:Courier Prime,monospace;color:#b8605c;font-size:18px;font-weight:700;">{license_key}</code>')}
+          </table>
+        ''')}
+
+        {section_title("How to activate")}
+        <table cellpadding="0" cellspacing="0" border="0" width="100%" style="margin:0 0 24px;">
+          <tr><td style="padding:8px 0;color:#4a4a4a;font-size:14px;line-height:1.6;">
+            <span style="display:inline-block;background:#b8605c;color:white;border-radius:50%;width:22px;height:22px;text-align:center;line-height:22px;font-size:12px;font-weight:700;margin-right:10px;">1</span>
+            Open OBSIDIAN Neural in your DAW (or standalone)
+          </td></tr>
+          <tr><td style="padding:8px 0;color:#4a4a4a;font-size:14px;line-height:1.6;">
+            <span style="display:inline-block;background:#b8605c;color:white;border-radius:50%;width:22px;height:22px;text-align:center;line-height:22px;font-size:12px;font-weight:700;margin-right:10px;">2</span>
+            In the configuration window, paste your license key
+          </td></tr>
+          <tr><td style="padding:8px 0;color:#4a4a4a;font-size:14px;line-height:1.6;">
+            <span style="display:inline-block;background:#b8605c;color:white;border-radius:50%;width:22px;height:22px;text-align:center;line-height:22px;font-size:12px;font-weight:700;margin-right:10px;">3</span>
+            Hit Activate — you're ready. Internet is only needed once, at activation.
+          </td></tr>
+        </table>
+
+        <p style="color:#4a4a4a;font-size:14px;margin:24px 0 0;line-height:1.6;">
+          Need to move to a new machine, or run out of activation slots? Just reply to
+          this email and I'll help.<br/>
+          <span style="color:#b8605c;font-weight:600;">— Anthony, creator of OBSIDIAN Neural</span>
+        </p>
+        """
+
+        return EmailService._send_email(
+            email,
+            "Your OBSIDIAN Neural license key",
+            base_template(
+                content,
+                preheader="Your license key and activation guide.",
+                unsubscribe_token=unsub,
+            ),
+            email_type="vst_license",
+            user_id=user_id,
+            unsubscribe_url=get_unsubscribe_url(unsub),
+            db=db,
+        )

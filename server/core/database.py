@@ -441,6 +441,56 @@ class ProviderSemanticWarning(Base):
 
     provider = relationship("Provider", back_populates="semantic_warnings")
 
+class License(Base):
+    __tablename__ = "licenses"
+
+    id = Column(Integer, primary_key=True, index=True)
+    license_key = Column(String(64), unique=True, index=True, nullable=False)
+    user_id = Column(
+        Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    email = Column(String(255), nullable=False, index=True)
+    tier = Column(String(50), nullable=False, default="standard")
+    status = Column(String(50), nullable=False, default="active")
+    max_activations = Column(Integer, nullable=False, default=3)
+    stripe_checkout_session_id = Column(String(255), nullable=True, unique=True)
+    stripe_payment_intent_id = Column(String(255), nullable=True)
+    amount_paid = Column(Integer, nullable=True)
+    expiration_date = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, default=func.now(), nullable=False)
+
+    user = relationship("User", foreign_keys=[user_id])
+    activations = relationship(
+        "LicenseActivation", back_populates="license", cascade="all, delete-orphan"
+    )
+
+    def __repr__(self):
+        return f"<License {self.license_key} - {self.email} ({self.status})>"
+
+
+class LicenseActivation(Base):
+    __tablename__ = "license_activations"
+
+    id = Column(Integer, primary_key=True, index=True)
+    license_id = Column(
+        Integer,
+        ForeignKey("licenses.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    machine_id = Column(String(64), nullable=False, index=True)
+    activated_at = Column(DateTime, default=func.now(), nullable=False)
+    last_seen_at = Column(DateTime, nullable=True)
+
+    license = relationship("License", back_populates="activations")
+
+    __table_args__ = (
+        UniqueConstraint("license_id", "machine_id", name="_license_machine_uc"),
+        Index("idx_activation_license_machine", "license_id", "machine_id"),
+    )
+
+    def __repr__(self):
+        return f"<LicenseActivation license={self.license_id} machine={self.machine_id[:12]}>"
 
 def get_db():
     db = SessionLocal()

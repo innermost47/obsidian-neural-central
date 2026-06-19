@@ -112,6 +112,10 @@ class Settings:
     VERIFY_DURATION_MIN = int(os.getenv("VERIFY_DURATION_MIN", "4"))
     VERIFY_DURATION_MAX = int(os.getenv("VERIFY_DURATION_MAX", "8"))
 
+    LICENSE_SIGNING_PRIVATE_KEY = os.getenv("LICENSE_SIGNING_PRIVATE_KEY")
+    STRIPE_PRICE_VST = os.getenv("STRIPE_PRICE_VST")
+    LICENSE_MAX_ACTIVATIONS = int(os.getenv("LICENSE_MAX_ACTIVATIONS", "3"))
+
     VERIFICATION_PROMPT_STARTS = [
         "steady",
         "deep",

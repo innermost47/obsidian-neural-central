@@ -124,3 +124,24 @@ class StripeService:
             return_url=f"{settings.FRONTEND_URL}/dashboard.php",
         )
         return session
+    
+    @staticmethod
+    def create_vst_checkout_session(buyer_email: str = None):
+        session = stripe.checkout.Session.create(
+            customer_email=buyer_email,
+            payment_method_types=["card"],
+            line_items=[
+                {
+                    "price": settings.STRIPE_PRICE_VST,
+                    "quantity": 1,
+                }
+            ],
+            mode="payment",
+            success_url=f"{settings.FRONTEND_URL}/vst-success.php?session_id={{CHECKOUT_SESSION_ID}}",
+            cancel_url=f"{settings.FRONTEND_URL}/vst.php",
+            metadata={
+                "type": "vst_license",
+            },
+            allow_promotion_codes=True,
+        )
+        return session

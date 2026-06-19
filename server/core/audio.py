@@ -9,7 +9,7 @@ from typing import Optional
 import numpy as np
 import asyncio
 from concurrent.futures import ThreadPoolExecutor
-import essentia.standard as es
+
 
 executor = ThreadPoolExecutor(max_workers=4)
 
@@ -36,6 +36,7 @@ async def detect_bpm(
     audio: np.ndarray, sr: int, expected_bpm: Optional[float] = None
 ) -> float | None:
     try:
+        import essentia.standard as es
         loop = asyncio.get_event_loop()
         audio_mono = librosa.to_mono(audio) if audio.ndim == 2 else audio
 

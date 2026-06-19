@@ -353,3 +353,31 @@ class AdminNotificationService:
             content,
             "admin_provider_banned",
         )
+    
+    @staticmethod
+    def notify_new_vst_license(
+        email: str, user_id: int, license_key: str, amount: str = None
+    ) -> bool:
+        amount_str = amount if amount else "—"
+
+        content = f"""
+        {section_title("New VST license sold")}
+        <h1 style="color:#1a1a1a;font-size:22px;font-weight:700;margin:0 0 16px;">
+          🔑 New VST license purchased
+        </h1>
+        {info_box(f'''
+          <table cellpadding="0" cellspacing="0" border="0" width="100%">
+            {stat_row("Email", email)}
+            {stat_row("User ID", str(user_id))}
+            {stat_row("License key", license_key)}
+            {stat_row("Amount", amount_str)}
+            {stat_row("Time", _now())}
+          </table>
+        ''')}
+        {_admin_link()}
+        """
+        return _send(
+            f"🔑 VST license sold — {email}",
+            content,
+            "admin_new_vst_license",
+        )
