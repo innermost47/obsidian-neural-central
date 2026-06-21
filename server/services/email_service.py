@@ -938,7 +938,7 @@ class EmailService:
     
     @staticmethod
     def send_vst_license_email(
-        email: str, license_key: str, user_id: int = None, db: Session = None
+        email: str, license_key: str, session_id :str, user_id: int = None, db: Session = None
     ) -> bool:
         unsub = EmailService._get_unsubscribe_token(user_id, db) if db else ""
 
@@ -985,6 +985,22 @@ class EmailService:
         <p style="color:#cccccc;font-size:12px;margin:12px 0 0;line-height:1.6;">
           Use this same email address ({email}) to set your password.
         </p>
+
+        {section_title("Download the plugin")}
+        <p style="color:#4a4a4a;font-size:14px;line-height:1.7;margin:0 0 16px;">
+          Grab the build for your system — install it, then activate with the key above.
+        </p>
+        <table cellpadding="0" cellspacing="0" border="0" width="100%" style="margin:0 0 24px;">
+          <tr>
+            <td style="padding:4px 0;"><a href="{settings.API_URL}/license/download?session_id={session_id}&platform=windows" style="color:#b8605c;text-decoration:none;font-weight:600;">→ Download for Windows</a></td>
+          </tr>
+          <tr>
+            <td style="padding:4px 0;"><a href="{settings.API_URL}/license/download?session_id={session_id}&platform=macos" style="color:#b8605c;text-decoration:none;font-weight:600;">→ Download for macOS</a></td>
+          </tr>
+          <tr>
+            <td style="padding:4px 0;"><a href="{settings.API_URL}/license/download?session_id={session_id}&platform=linux" style="color:#b8605c;text-decoration:none;font-weight:600;">→ Download for Linux</a></td>
+          </tr>
+        </table>
 
         <p style="color:#4a4a4a;font-size:14px;margin:24px 0 0;line-height:1.6;">
           Need to move to a new machine, or run out of activation slots? Just reply to

@@ -395,6 +395,7 @@ def handle_vst_license_completed(session):
         EmailService.send_vst_license_email(
             email=email,
             license_key=license_key,
+            session_id=session["id"],
             user_id=user.id,
             db=db,
         )

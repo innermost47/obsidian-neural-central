@@ -116,6 +116,9 @@ class Settings:
     STRIPE_PRICE_VST = os.getenv("STRIPE_PRICE_VST")
     LICENSE_MAX_ACTIVATIONS = int(os.getenv("LICENSE_MAX_ACTIVATIONS", "3"))
 
+    GITHUB_RELEASE_TOKEN = os.getenv("GITHUB_RELEASE_TOKEN")
+    GITHUB_COMMERCIAL_REPO = os.getenv("GITHUB_COMMERCIAL_REPO")
+
     VERIFICATION_PROMPT_STARTS = [
         "steady",
         "deep",
