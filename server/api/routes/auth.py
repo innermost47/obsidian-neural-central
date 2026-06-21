@@ -494,6 +494,39 @@ async def google_callback(code: str, db: Session = Depends(get_db)):
 def get_current_user_info(
     current_user: User = Depends(get_current_active_user), db: Session = Depends(get_db)
 ):
+    from server.core.database import License, LicenseActivation
+
+    licenses = (
+        db.query(License).filter(License.user_id == current_user.id).all()
+    )
+
+    licenses_data = []
+    for lic in licenses:
+        activations = (
+            db.query(LicenseActivation)
+            .filter(LicenseActivation.license_id == lic.id)
+            .all()
+        )
+        licenses_data.append(
+            {
+                "license_key": lic.license_key,
+                "tier": lic.tier,
+                "status": lic.status,
+                "max_activations": lic.max_activations,
+                "machines_used": len(activations),
+                "machines": [
+                    {
+                        "machine_id": a.machine_id,
+                        "activated_at": a.activated_at.isoformat() if a.activated_at else None,
+                        "last_seen_at": a.last_seen_at.isoformat() if a.last_seen_at else None,
+                    }
+                    for a in activations
+                ],
+                "expiration_date": lic.expiration_date.isoformat() if lic.expiration_date else None,
+                "created_at": lic.created_at.isoformat() if lic.created_at else None,
+            }
+        )
+
     return {
         "id": current_user.id,
         "email": current_user.email,
@@ -515,6 +548,7 @@ def get_current_user_info(
         )
         .first()
         is not None,
+        "vst_licenses": licenses_data,
     }
 
 

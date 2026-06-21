@@ -975,6 +975,17 @@ class EmailService:
           </td></tr>
         </table>
 
+        {section_title("Manage your license online (optional)")}
+        <p style="color:#4a4a4a;font-size:14px;line-height:1.7;margin:0 0 16px;">
+          Want to back up your key, see your activated machines, or free up a slot when
+          you change computers? Set up access to your account — your license is already
+          linked to this email address ({email}).
+        </p>
+        {btn_secondary("Set up my account access →", f"{settings.FRONTEND_URL}/forgot-password.php")}
+        <p style="color:#cccccc;font-size:12px;margin:12px 0 0;line-height:1.6;">
+          Use this same email address ({email}) to set your password.
+        </p>
+
         <p style="color:#4a4a4a;font-size:14px;margin:24px 0 0;line-height:1.6;">
           Need to move to a new machine, or run out of activation slots? Just reply to
           this email and I'll help.<br/>
