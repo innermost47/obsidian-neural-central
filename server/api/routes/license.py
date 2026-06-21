@@ -127,8 +127,8 @@ async def download_local_edition(
 async def _resolve_github_asset(platform: str) -> str | None:
     platform_markers = {
         "windows": [".exe", "win", "windows"],
-        "macos": [".dmg", "mac", "macos", "osx"],
-        "linux": [".AppImage", ".deb", "linux"],
+        "macos": [".pkg", "mac", "macos", "osx"], 
+        "linux": [".tar.gz", ".tgz", "linux"],     
     }
     markers = platform_markers[platform]
 
