@@ -230,28 +230,26 @@ class EmailService:
     @staticmethod
     def send_password_reset_email(email: str, token: str, db: Session = None) -> bool:
         reset_url = f"{settings.FRONTEND_URL}/reset-password.php?token={token}"
-
         content = f"""
-        {section_title("Password reset")}
+        {section_title("Account access")}
         <h1 style="color:#1a1a1a;font-size:24px;font-weight:700;margin:0 0 16px;">
-          Reset your password
+          Set your password
         </h1>
         <p style="color:#4a4a4a;font-size:15px;line-height:1.7;margin:0 0 28px;">
-          We received a request to reset your OBSIDIAN Neural password.
-          This link expires in <strong>1 hour</strong>.
+          We received a request to set the password for your OBSIDIAN Neural account.
+          Click below to choose one — this link expires in <strong>1 hour</strong>.
         </p>
-        {btn_primary("Reset my password →", reset_url)}
+        {btn_primary("Set my password →", reset_url)}
         <p style="color:#cccccc;font-size:12px;margin:20px 0 0;line-height:1.6;">
-          If you didn't request this, please ignore this email. Your password won't change.
+          If you didn't request this, you can safely ignore this email — nothing will change.
         </p>
         """
-
         return EmailService._send_email(
             email,
-            "Reset your OBSIDIAN Neural password",
+            "Set your OBSIDIAN Neural password",
             base_template(
                 content,
-                preheader="Click to reset your password. Link expires in 1 hour.",
+                preheader="Click to set your password. Link expires in 1 hour.",
             ),
             email_type="password_reset",
             db=db,
