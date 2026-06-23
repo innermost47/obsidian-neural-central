@@ -123,7 +123,7 @@ class ContactRequest(BaseModel):
 
     @validator("subject")
     def valid_subject(cls, v):
-        allowed = ["support", "billing", "feature", "bug", "partnership", "other"]
+        allowed = ["support", "billing", "feature", "bug", "partnership", "other", "beta"]
         if v not in allowed:
             raise ValueError("Invalid subject")
         return v
