@@ -678,6 +678,7 @@ class EmailService:
             "feature": "Feature Request",
             "bug": "Bug Report",
             "partnership": "Partnership",
+            "beta": "Beta Tester Request",
             "other": "Other",
         }
         label = subject_labels.get(subject, "Contact")
