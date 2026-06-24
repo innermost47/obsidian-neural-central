@@ -995,13 +995,13 @@ class EmailService:
         </p>
         <table cellpadding="0" cellspacing="0" border="0" width="100%" style="margin:0 0 24px;">
           <tr>
-            <td style="padding:4px 0;"><a href="{settings.API_URL}/license/download?session_id={session_id}&platform=windows" style="color:#b8605c;text-decoration:none;font-weight:600;">→ Download for Windows</a></td>
+            <td style="padding:4px 0;"><a href="{settings.API_URL}/api/v1/license/download?session_id={session_id}&platform=windows" style="color:#b8605c;text-decoration:none;font-weight:600;">→ Download for Windows</a></td>
           </tr>
           <tr>
-            <td style="padding:4px 0;"><a href="{settings.API_URL}/license/download?session_id={session_id}&platform=macos" style="color:#b8605c;text-decoration:none;font-weight:600;">→ Download for macOS</a></td>
+            <td style="padding:4px 0;"><a href="{settings.API_URL}/api/v1/license/download?session_id={session_id}&platform=macos" style="color:#b8605c;text-decoration:none;font-weight:600;">→ Download for macOS</a></td>
           </tr>
           <tr>
-            <td style="padding:4px 0;"><a href="{settings.API_URL}/license/download?session_id={session_id}&platform=linux" style="color:#b8605c;text-decoration:none;font-weight:600;">→ Download for Linux</a></td>
+            <td style="padding:4px 0;"><a href="{settings.API_URL}/api/v1/license/download?session_id={session_id}&platform=linux" style="color:#b8605c;text-decoration:none;font-weight:600;">→ Download for Linux</a></td>
           </tr>
         </table>
 
