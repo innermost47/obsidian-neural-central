@@ -138,7 +138,7 @@ class StripeService:
             ],
             mode="payment",
             success_url=f"{settings.FRONTEND_URL}/vst-success.php?session_id={{CHECKOUT_SESSION_ID}}",
-            cancel_url=f"{settings.FRONTEND_URL}/vst.php",
+            cancel_url=f"{settings.FRONTEND_URL}/local.php",
             metadata={
                 "type": "vst_license",
             },
