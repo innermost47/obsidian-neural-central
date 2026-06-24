@@ -82,9 +82,13 @@ class EmailService:
                     msg["List-Unsubscribe"] = f"<{unsubscribe_url}>"
                     msg["List-Unsubscribe-Post"] = "List-Unsubscribe=One-Click"
 
-                with smtplib.SMTP_SSL(
-                    settings.SMTP_HOST, settings.SMTP_PORT, timeout=30
-                ) as server:
+                if settings.SMTP_HOST != "localhost":
+                    smtp = smtplib.SMTP_SSL(settings.SMTP_HOST, settings.SMTP_PORT, timeout=30)
+                    smtp.login(settings.SMTP_USERNAME, settings.SMTP_PASSWORD)
+                else:
+                    smtp = smtplib.SMTP(settings.SMTP_HOST, settings.SMTP_PORT, timeout=30)
+
+                with smtp as server:
                     server.login(settings.SMTP_USERNAME, settings.SMTP_PASSWORD)
                     server.send_message(msg)
 

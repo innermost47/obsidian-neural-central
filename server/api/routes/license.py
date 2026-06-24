@@ -6,7 +6,7 @@ from server.core.database import get_db, User
 from server.api.models import LicenseActivateRequest, LicenseReleaseRequest, VstCheckoutRequest
 from server.services.license_service import LicenseService, LicenseActivationError
 from server.services.stripe_service import StripeService
-from server.api.dependencies import get_current_active_user
+from server.api.dependencies import get_current_active_user, get_current_user_optional
 from server.config import settings
 
 router = APIRouter(prefix="/license", tags=["License"])
@@ -96,10 +96,12 @@ def release_machine_authenticated(
     db.commit()
     return {"success": True}
 
+
 @router.get("/download")
 async def download_local_edition(
-    session_id: str = Query(...),
     platform: str = Query(...),
+    session_id: str = Query(None),
+    current_user: User = Depends(get_current_user_optional),
     db: Session = Depends(get_db),
 ):
     from server.core.database import License
@@ -108,27 +110,43 @@ async def download_local_edition(
     if platform not in valid_platforms:
         raise HTTPException(status_code=400, detail="Invalid platform")
 
-    license_obj = (
-        db.query(License)
-        .filter(License.stripe_checkout_session_id == session_id)
-        .first()
-    )
+    license_obj = None
+
+    if session_id:
+        license_obj = (
+            db.query(License)
+            .filter(License.stripe_checkout_session_id == session_id)
+            .first()
+        )
+    elif current_user:
+        license_obj = (
+            db.query(License)
+            .filter(
+                License.user_id == current_user.id,
+                License.status == "active",
+            )
+            .first()
+        )
 
     if not license_obj or license_obj.status != "active":
-        raise HTTPException(status_code=403, detail="No valid license for this session")
+        raise HTTPException(
+            status_code=403, detail="No valid license found"
+        )
 
     asset_url = await _resolve_github_asset(platform)
     if not asset_url:
-        raise HTTPException(status_code=404, detail="Build not available for this platform")
+        raise HTTPException(
+            status_code=404, detail="Build not available for this platform"
+        )
 
     return RedirectResponse(url=asset_url, status_code=302)
 
 
 async def _resolve_github_asset(platform: str) -> str | None:
     platform_markers = {
-        "windows": [".exe", "win", "windows"],
-        "macos": [".pkg", "mac", "macos", "osx"], 
-        "linux": [".tar.gz", ".tgz", "linux"],     
+        "windows": ["win64", ".exe"],
+        "macos": ["darwin", ".pkg"],
+        "linux": ["linux", ".tar.gz"],
     }
     markers = platform_markers[platform]
 

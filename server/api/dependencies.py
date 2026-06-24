@@ -1,4 +1,4 @@
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends, HTTPException, status, Query, Header
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials, APIKeyHeader
 from sqlalchemy.orm import Session
 from server.core.database import get_db, User
@@ -46,6 +46,39 @@ def get_current_active_user(current_user: User = Depends(get_current_user)) -> U
         raise HTTPException(status_code=403, detail="Inactive user")
     return current_user
 
+
+def get_current_user_optional(
+    token_query: str = Query(None, alias="token"),
+    authorization: str = Header(None),
+    db: Session = Depends(get_db),
+) -> User | None:
+    token = None
+
+    if token_query:
+        token = token_query
+    elif authorization and authorization.startswith("Bearer "):
+        token = authorization.split(" ", 1)[1]
+
+    if not token:
+        return None
+
+    payload = decode_access_token(token)
+    if not payload:
+        return None
+
+    user_id = payload.get("sub")
+    email = payload.get("email")
+
+    user = None
+    if user_id:
+        user = db.query(User).filter(User.id == int(user_id)).first()
+    if not user and email:
+        user = db.query(User).filter(User.email == email).first()
+
+    if not user or not user.is_active:
+        return None
+
+    return user
 
 def get_verified_user(current_user: User = Depends(get_current_active_user)) -> User:
     if not current_user.email_verified:
