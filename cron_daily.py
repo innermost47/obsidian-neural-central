@@ -19,7 +19,7 @@ from server.core.database import (
     SessionLocal,
     User,
     GiftSubscription,
-    GiftSubscriptionStatus,
+    GiftSubscriptionStatus,License
 )
 from server.services.email_service import EmailService
 from server.services.credits_service import CreditsService
@@ -367,6 +367,16 @@ def compute_and_redistribute():
         has_more = True
         starting_after = None
 
+        vst_payment_intents = set(
+            row[0] for row in db.query(License.stripe_payment_intent_id)
+            .filter(
+                License.created_at >= last_month_start,
+                License.created_at < last_month_end,
+                License.stripe_payment_intent_id != None,
+            )
+            .all()
+        )
+
         while has_more:
             params = {
                 "created": {
@@ -381,6 +391,8 @@ def compute_and_redistribute():
             charges = stripe.Charge.list(**params)
             for charge in charges.data:
                 if charge.status == "succeeded" and not charge.refunded:
+                    if charge.payment_intent in vst_payment_intents:
+                        continue
                     total_cents += charge.amount
 
             has_more = charges.has_more
