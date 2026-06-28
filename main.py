@@ -155,8 +155,6 @@ def root():
         "name": "Obsidian Neural API",
         "version": "2.0.0",
         "status": "operational",
-        "provider_ping_scheduler": "active",
-        "email_tasks": "cron — see cron_daily.py",
     }
 
 
