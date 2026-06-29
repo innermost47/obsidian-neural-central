@@ -155,9 +155,8 @@ def get_latest_version(
     def serialize(row):
         return {
             "platform": row.platform,
-            "version": row.version,
-            "asset_name": row.asset_name,
             "released_at": row.released_at.isoformat() if row.released_at else None,
+            "asset_name": row.asset_name,
         }
 
     if platform:
