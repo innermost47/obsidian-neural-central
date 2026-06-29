@@ -1,13 +1,11 @@
-import httpx
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import RedirectResponse
 from sqlalchemy.orm import Session
-from server.core.database import get_db, User
+from server.core.database import get_db, User, BuildVersion
 from server.api.models import LicenseActivateRequest, LicenseReleaseRequest, VstCheckoutRequest
 from server.services.license_service import LicenseService, LicenseActivationError
 from server.services.stripe_service import StripeService
 from server.api.dependencies import get_current_active_user, get_current_user_optional
-from server.config import settings
 
 router = APIRouter(prefix="/license", tags=["License"])
 
@@ -111,7 +109,6 @@ async def download_local_edition(
         raise HTTPException(status_code=400, detail="Invalid platform")
 
     license_obj = None
-
     if session_id:
         license_obj = (
             db.query(License)
@@ -121,66 +118,51 @@ async def download_local_edition(
     elif current_user:
         license_obj = (
             db.query(License)
-            .filter(
-                License.user_id == current_user.id,
-                License.status == "active",
-            )
+            .filter(License.user_id == current_user.id, License.status == "active")
             .first()
         )
 
     if not license_obj or license_obj.status != "active":
-        raise HTTPException(
-            status_code=403, detail="No valid license found"
-        )
+        raise HTTPException(status_code=403, detail="No valid license found")
 
-    asset_url = await _resolve_github_asset(platform)
+    asset_url, release, asset = await LicenseService.resolve_github_asset(platform)
     if not asset_url:
-        raise HTTPException(
-            status_code=404, detail="Build not available for this platform"
-        )
+        raise HTTPException(status_code=404, detail="Build not available for this platform")
+    try:
+        LicenseService.upsert_build_version(db, platform, release, asset)
+    except Exception:
+        pass
 
     return RedirectResponse(url=asset_url, status_code=302)
 
 
-async def _resolve_github_asset(platform: str) -> str | None:
-    platform_markers = {
-        "windows": ["win64", ".exe"],
-        "macos": ["darwin", ".pkg"],
-        "linux": ["linux", ".tar.gz"],
-    }
-    markers = platform_markers[platform]
+@router.get("/version/latest")
+def get_latest_version(
+    platform: str = Query(None),
+    db: Session = Depends(get_db),
+):
+    query = db.query(BuildVersion)
+    if platform:
+        valid_platforms = {"windows", "macos", "linux"}
+        if platform not in valid_platforms:
+            raise HTTPException(status_code=400, detail="Invalid platform")
+        query = query.filter(BuildVersion.platform == platform)
 
-    headers = {
-        "Authorization": f"Bearer {settings.GITHUB_RELEASE_TOKEN}",
-        "Accept": "application/vnd.github+json",
-        "X-GitHub-Api-Version": "2022-11-28",
-    }
+    rows = query.all()
+    if not rows:
+        return {"available": False}
 
-    api_url = f"https://api.github.com/repos/{settings.GITHUB_COMMERCIAL_REPO}/releases/latest"
+    def serialize(row):
+        return {
+            "platform": row.platform,
+            "version": row.version,
+            "asset_name": row.asset_name,
+            "released_at": row.released_at.isoformat() if row.released_at else None,
+        }
 
-    async with httpx.AsyncClient(timeout=15.0) as client:
-        resp = await client.get(api_url, headers=headers)
-        if resp.status_code != 200:
-            return None
+    if platform:
+        return {"available": True, **serialize(rows[0])}
 
-        release = resp.json()
-        for asset in release.get("assets", []):
-            name = asset.get("name", "").lower()
-            if any(marker.lower() in name for marker in markers):
-                return await _get_asset_download_url(client, asset, headers)
-
-    return None
+    return {"available": True, "platforms": [serialize(r) for r in rows]}
 
 
-async def _get_asset_download_url(client, asset, headers) -> str | None:
-    asset_api_url = asset.get("url")
-    if not asset_api_url:
-        return None
-
-    octet_headers = {**headers, "Accept": "application/octet-stream"}
-    resp = await client.get(asset_api_url, headers=octet_headers, follow_redirects=False)
-
-    if resp.status_code in (301, 302, 307):
-        return resp.headers.get("location")
-
-    return None

@@ -14,7 +14,7 @@ from sqlalchemy import func
 from scipy.spatial.distance import cosine
 from sqlalchemy.orm import Session
 from server.config import settings
-from server.api.models import ProviderStatusResponse, ProviderGenerateResponse
+from server.api.models import ProviderStatusResponse, ProviderGenerateResponse, SupportedModel
 
 logger = logging.getLogger(__name__)
 
@@ -46,6 +46,7 @@ class ProviderVerificationService:
         seed: int,
         duration: int,
         provider_api_key_hash: str,
+        round_model:str
     ) -> Optional[Dict]:
         async with httpx.AsyncClient(timeout=settings.VERIFY_TIMEOUT) as client:
             try:
@@ -60,7 +61,7 @@ class ProviderVerificationService:
                         "prompt": prompt,
                         "seed": seed,
                         "duration": duration,
-                        "model": "stable-audio-open-1.0",
+                        "model": round_model,
                     },
                 )
 
@@ -344,38 +345,18 @@ class ProviderVerificationService:
         return locked
 
     @staticmethod
-    async def _fetch_trusted_model(trusted_url: str, decrypted_key: str) -> str:
-        try:
-            async with httpx.AsyncClient(timeout=5.0) as client:
-                r = await client.post(
-                    f"{trusted_url.rstrip('/')}/process",
-                    headers={"X-API-Key": decrypted_key},
-                    json={"action": "status"},
-                )
-                if r.status_code == 200:
-                    try:
-                        data = r.json()
-                        status_response = ProviderStatusResponse(**data)
-                        return status_response.model
-                    except ValidationError:
-                        return "unknown"
-        except Exception:
-            pass
-        return "unknown"
-
-    @staticmethod
     async def _fill_sample_bank_from_trusted(
         db: Session,
         trusted,
         decrypted_key: str,
-        model: str,
+        round_model: str,
     ) -> None:
         from server.core.database import VerificationSample
         from server.services.provider_service import ProviderService
 
         existing_count = (
             db.query(VerificationSample)
-            .filter(VerificationSample.model == model)
+            .filter(VerificationSample.model == round_model)
             .count()
         )
         needed = max(0, settings.TRUSTED_SAMPLE_TARGET - existing_count)
@@ -383,13 +364,13 @@ class ProviderVerificationService:
         if needed == 0:
             logger.info(
                 f"📦 Sample bank full ({existing_count}/{settings.TRUSTED_SAMPLE_TARGET})"
-                f"for model '{model}' — no fill needed"
+                f"for model '{round_model}' — no fill needed"
             )
             return
 
         logger.info(
             f"📦 Filling sample bank: {needed} sample(s) needed "
-            f"({existing_count}/{settings.TRUSTED_SAMPLE_TARGET}) for model '{model}'"
+            f"({existing_count}/{settings.TRUSTED_SAMPLE_TARGET}) for model '{round_model}'"
         )
         for _ in range(needed):
             s_seed = random.randint(0, 2**31 - 1)
@@ -405,6 +386,7 @@ class ProviderVerificationService:
                 s_seed,
                 s_duration,
                 trusted.api_key,
+                round_model
             )
             if not result or not result.get("wav"):
                 logger.warning(f"  ⚠️  Trusted failed to generate sample '{s_prompt}'")
@@ -421,7 +403,7 @@ class ProviderVerificationService:
                 logger.warning(f"  ⚠️  Bad fingerprint for sample '{s_prompt}'")
                 continue
             ok = ProviderVerificationService._store_sample(
-                db, s_prompt, s_seed, model, fp, s_duration
+                db, s_prompt, s_seed, round_model, fp, s_duration
             )
             if ok:
                 logger.info(f"  ✅ Sample stored — prompt: '{s_prompt}' seed: {s_seed}")
@@ -461,6 +443,7 @@ class ProviderVerificationService:
         db: Session,
         trusted,
         report: Dict,
+        round_model: str
     ) -> Tuple[Optional[np.ndarray], Optional[str], str, int]:
         from server.core.security import decrypt_server_key
 
@@ -478,19 +461,16 @@ class ProviderVerificationService:
             logger.warning(
                 f"⚠️  Trusted '{trusted.name}' busy — falling back to sample bank"
             )
-            return ProviderVerificationService._draw_reference_from_bank(db)
+            return ProviderVerificationService._draw_reference_from_bank(db, model_filter=round_model)
 
         try:
             decrypted_key = decrypt_server_key(trusted.encoded_server_auth_key)
-            model = await ProviderVerificationService._fetch_trusted_model(
-                trusted.url, decrypted_key
-            )
             await ProviderVerificationService._fill_sample_bank_from_trusted(
-                db, trusted, decrypted_key, model
+                db, trusted, decrypted_key, round_model
             )
             fp, ref_model, source, ref_duration = (
                 ProviderVerificationService._draw_reference_from_bank(
-                    db, model_filter=model
+                    db, model_filter=round_model
                 )
             )
             if fp is None:
@@ -510,6 +490,7 @@ class ProviderVerificationService:
         seed: int,
         duration: int,
         report: Dict,
+        round_model: str,
     ) -> Tuple[list, list]:
 
         from server.core.security import decrypt_server_key
@@ -534,6 +515,7 @@ class ProviderVerificationService:
                         seed,
                         duration,
                         p.api_key,
+                        round_model
                     )
                 )
             except Exception as e:
@@ -549,12 +531,12 @@ class ProviderVerificationService:
         provider,
         result,
         reference_fp: np.ndarray,
-        reference_model: Optional[str],
         reference_source: str,
         prompt: str,
         reference_duration: int,
         seed: int,
         report: Dict,
+        round_model: str
     ) -> None:
         from server.services.provider_service import ProviderService
 
@@ -639,25 +621,27 @@ class ProviderVerificationService:
 
         report["responded"] += 1
 
-        if reference_model and provider_model != reference_model:
-            logger.info(
-                f"  ⏭️  {provider.name} — model mismatch "
-                f"(provider: {provider_model} / reference: {reference_model})"
+        if result.get("model") != round_model:
+            logger.warning(
+                f"  ❌ {provider.name} — model mismatch "
+                f"(declared: {result.get('model')} / expected: {round_model})"
             )
-            ProviderVerificationService._reset_failures(db, provider.id)
-            ProviderVerificationService._save_result(
-                db, provider.id, prompt, seed, None, True
-            )
-            report["results"].append(
-                {
-                    "provider_id": provider.id,
-                    "provider_name": provider.name,
-                    "model": provider_model,
-                    "similarity": None,
-                    "passed": True,
-                    "note": "model_mismatch_skipped",
-                }
-            )
+            report["failed"] += 1
+            should_ban = ProviderVerificationService._flag_provider(db, provider.id)
+            ProviderVerificationService._save_result(db, provider.id, prompt, seed, None, False)
+            if should_ban:
+                ProviderVerificationService._ban_provider(
+                    db, provider.id,
+                    f"Model mismatch: declared '{result.get('model')}' but round required '{round_model}'"
+                )
+            report["results"].append({
+                "provider_id": provider.id,
+                "provider_name": provider.name,
+                "model": result.get("model"),
+                "similarity": None,
+                "passed": False,
+                "note": "model_mismatch",
+            })
             return
 
         similarity = ProviderVerificationService._cosine_similarity(fp, reference_fp)
@@ -704,6 +688,8 @@ class ProviderVerificationService:
     async def run_verification_round(db: Session) -> Dict:
         from server.core.database import Provider
 
+        round_model = random.choice(list(SupportedModel)).value
+
         all_providers = (
             db.query(Provider)
             .filter(
@@ -735,7 +721,7 @@ class ProviderVerificationService:
 
         trusted = ProviderVerificationService._get_trusted_provider(db)
         reference_fp, reference_model, reference_source, reference_duration = (
-            await ProviderVerificationService._build_reference(db, trusted, report)
+            await ProviderVerificationService._build_reference(db, trusted, report, round_model)
         )
 
         if reference_fp is None:
@@ -748,7 +734,7 @@ class ProviderVerificationService:
             }
 
         report["reference_source"] = reference_source
-        report["reference_model"] = reference_model
+        report["reference_model"] = round_model
 
         locked_providers, raw_results = (
             await ProviderVerificationService._request_verifications_from_providers(
@@ -769,12 +755,12 @@ class ProviderVerificationService:
                     provider,
                     result,
                     reference_fp,
-                    reference_model,
                     reference_source,
                     prompt,
                     reference_duration,
                     seed,
                     report,
+                    round_model
                 )
         finally:
             for p in locked_providers:

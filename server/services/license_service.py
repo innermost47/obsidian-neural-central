@@ -1,9 +1,12 @@
 import struct
+import httpx
+import re
 import secrets
 from datetime import datetime, timezone
+from sqlalchemy.orm import Session
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from server.config import settings
-from server.core.database import License, LicenseActivation
+from server.core.database import License, LicenseActivation, BuildVersion
 
 class LicenseActivationError(Exception):
     def __init__(self, message: str):
@@ -160,3 +163,81 @@ class LicenseService:
         db.delete(activation)
         db.commit()
         return True
+    
+    @staticmethod
+    async def resolve_github_asset(platform: str) -> tuple[str | None, dict, dict]:
+        platform_markers = {
+            "windows": ["win64", ".exe"],
+            "macos": ["darwin", ".pkg"],
+            "linux": ["linux", ".tar.gz"],
+        }
+        markers = platform_markers[platform]
+        headers = {
+            "Authorization": f"Bearer {settings.GITHUB_RELEASE_TOKEN}",
+            "Accept": "application/vnd.github+json",
+            "X-GitHub-Api-Version": "2022-11-28",
+        }
+        api_url = f"https://api.github.com/repos/{settings.GITHUB_COMMERCIAL_REPO}/releases/latest"
+
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            resp = await client.get(api_url, headers=headers)
+            if resp.status_code != 200:
+                return None, {}, {}
+
+            release = resp.json()
+            for asset in release.get("assets", []):
+                name = asset.get("name", "").lower()
+                if any(marker.lower() in name for marker in markers):
+                    url = await LicenseService.get_asset_download_url(client, asset, headers)
+                    return url, release, asset
+
+        return None, {}, {}
+
+
+    @staticmethod
+    async def get_asset_download_url(client, asset, headers) -> str | None:
+        asset_api_url = asset.get("url")
+        if not asset_api_url:
+            return None
+
+        octet_headers = {**headers, "Accept": "application/octet-stream"}
+        resp = await client.get(asset_api_url, headers=octet_headers, follow_redirects=False)
+
+        if resp.status_code in (301, 302, 307):
+            return resp.headers.get("location")
+
+        return None
+    
+    @staticmethod
+    def parse_version_from_tag(tag: str) -> str:
+        return tag.lstrip("v") if tag else "unknown"
+
+    @staticmethod
+    def upsert_build_version(db: Session, platform: str, release: dict, asset: dict):
+
+
+        version = LicenseService.parse_version_from_tag(release.get("tag_name", ""))
+        asset_name = asset.get("name", "")
+
+        published_at_raw = release.get("published_at")
+        released_at = (
+            datetime.fromisoformat(published_at_raw.replace("Z", "+00:00"))
+            if published_at_raw else None
+        )
+
+        row = db.query(BuildVersion).filter(BuildVersion.platform == platform).first()
+        if row:
+            row.version = version
+            row.asset_name = asset_name
+            row.released_at = released_at
+            row.updated_at = datetime.utcnow()
+        else:
+            row = BuildVersion(
+                platform=platform,
+                version=version,
+                asset_name=asset_name,
+                released_at=released_at,
+            )
+            db.add(row)
+
+        db.commit()
