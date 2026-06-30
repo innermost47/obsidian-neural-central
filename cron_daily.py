@@ -19,7 +19,8 @@ from server.core.database import (
     SessionLocal,
     User,
     GiftSubscription,
-    GiftSubscriptionStatus,License
+    GiftSubscriptionStatus,
+    License,
 )
 from server.services.email_service import EmailService
 from server.services.credits_service import CreditsService
@@ -162,6 +163,47 @@ def check_and_send_followup_emails():
 
     except Exception as e:
         log(f"❌ Error in followup task: {e}")
+        db.rollback()
+    finally:
+        db.close()
+
+
+def check_and_send_license_upsell_emails():
+    db = SessionLocal()
+    now = datetime.utcnow()
+    count = 0
+
+    try:
+        log("Starting license upsell check...")
+
+        day7_start, day7_end = day_window(now, 7)
+
+        for lic in (
+            db.query(License)
+            .filter(License.created_at.between(day7_end, day7_start))
+            .all()
+        ):
+            user = db.query(User).filter(User.id == lic.user_id).first()
+            if not user:
+                continue
+            if user.subscription_tier not in ("none", "free"):
+                continue
+            if not user.accept_news_updates or not user.email_verified:
+                continue
+
+            try:
+                if EmailService.send_license_upsell_reminder(
+                    user.email, user_id=user.id, db=db
+                ):
+                    count += 1
+                    log(f"✅ License upsell sent to {user.email}")
+            except Exception as e:
+                log(f"❌ License upsell failed for {user.email}: {e}")
+
+        log(f"✅ License upsell check done — {count} emails sent")
+
+    except Exception as e:
+        log(f"❌ Error in license upsell task: {e}")
         db.rollback()
     finally:
         db.close()
@@ -537,6 +579,7 @@ def cleanup_old_pings():
 
 TASKS = {
     "followup_emails": check_and_send_followup_emails,
+    "license_upsell": check_and_send_license_upsell_emails,
     "expiration_warnings": send_gift_expiration_warnings,
     "expire_gifts": check_and_expire_gifts,
     "refill_gifts": refill_gift_subscription_credits,

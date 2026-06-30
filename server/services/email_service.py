@@ -136,10 +136,13 @@ class EmailService:
         {section_title("Welcome to OBSIDIAN Neural")}
         <h1 style="color:#1a1a1a;font-size:26px;font-weight:700;margin:0 0 16px;line-height:1.3;">
           Your account is ready.<br/>
-          <span style="color:#b8605c;">Let's make some music.</span>
+          <span style="color:#b8605c;">The machine is ready to hallucinate.</span>
         </h1>
-        <p style="color:#4a4a4a;font-size:15px;line-height:1.7;margin:0 0 24px;">
-          You have <strong>20 free credits</strong> to get started. Here's everything you need.
+        <p style="color:#4a4a4a;font-size:15px;line-height:1.7;margin:0 0 8px;">
+          You have <strong>20 trips on the house</strong> &mdash; no card required.
+        </p>
+        <p style="color:#4a4a4a;font-size:14px;font-style:italic;line-height:1.7;margin:0 0 24px;">
+          Finally, a tool that justifies your impostor syndrome.
         </p>
 
         {section_title("Your credentials")}
@@ -185,10 +188,10 @@ class EmailService:
 
         return EmailService._send_email(
             email,
-            "Welcome to OBSIDIAN Neural — Your API Key Inside",
+            "Welcome to OBSIDIAN Neural — your first trip is on us",
             base_template(
                 content,
-                preheader="Your API key and everything you need to get started.",
+                preheader="Your API key and everything you need to start hallucinating.",
                 unsubscribe_token=unsub,
             ),
             email_type="welcome",
@@ -271,8 +274,11 @@ class EmailService:
         <h1 style="color:#1a1a1a;font-size:24px;font-weight:700;margin:0 0 16px;">
           You're on the <span style="color:#b8605c;">{tier_display}</span> plan.
         </h1>
-        <p style="color:#4a4a4a;font-size:15px;line-height:1.7;margin:0 0 24px;">
-          Your subscription is active and your credits have been added.
+        <p style="color:#4a4a4a;font-size:15px;line-height:1.7;margin:0 0 8px;">
+          All 9 engines are now yours to hallucinate with. Your credits have been added.
+        </p>
+        <p style="color:#4a4a4a;font-size:14px;font-style:italic;line-height:1.7;margin:0 0 24px;">
+          Welcome to the crew that doesn't ask "is this even possible," it just generates.
         </p>
         {info_box(f'''
           <table cellpadding="0" cellspacing="0" border="0" width="100%">
@@ -289,10 +295,10 @@ class EmailService:
 
         return EmailService._send_email(
             email,
-            f"Subscription confirmed — {tier_display} plan",
+            f"Subscription confirmed — {tier_display} plan, 9 engines unlocked",
             base_template(
                 content,
-                preheader=f"Your {tier_display} plan is now active.",
+                preheader=f"Your {tier_display} plan is now active. All 9 engines are yours.",
             ),
             email_type="subscription_confirmation",
             user_id=user_id,
@@ -310,7 +316,7 @@ class EmailService:
         </h1>
         <p style="color:#4a4a4a;font-size:15px;line-height:1.7;margin:0 0 24px;">
           You'll continue to have access to all features until the end of your current billing period.
-          After that, your account will revert to the free plan.
+          After that, your account will revert to the free plan. No hard feelings — the crew's door stays open.
         </p>
         {btn_secondary("Reactivate my subscription", f"{settings.FRONTEND_URL}/dashboard.php?section=subscription")}
         <p style="color:#4a4a4a;font-size:14px;margin:24px 0 0;line-height:1.6;">
@@ -366,10 +372,10 @@ class EmailService:
         content = f"""
         {section_title("You received a gift")}
         <h1 style="color:#1a1a1a;font-size:24px;font-weight:700;margin:0 0 8px;">
-          {purchaser_name} gifted you OBSIDIAN Neural
+          {purchaser_name} just made you hallucinate.
         </h1>
         <p style="color:#4a4a4a;font-size:15px;line-height:1.7;margin:0 0 24px;">
-          You have <strong>{duration_months} month{"s" if duration_months > 1 else ""}</strong> of the <strong>{tier_display}</strong> plan — worth <strong>&euro;{total_value:.2f}</strong>.
+          You have <strong>{duration_months} month{"s" if duration_months > 1 else ""}</strong> of the <strong>{tier_display}</strong> plan — worth <strong>&euro;{total_value:.2f}</strong>. No strings, no comedown.
         </p>
 
         {personal_msg}
@@ -394,7 +400,7 @@ class EmailService:
 
         return EmailService._send_email(
             recipient_email,
-            f"🎁 {purchaser_name} gifted you OBSIDIAN Neural!",
+            f"🎁 {purchaser_name} gifted you a trip into OBSIDIAN Neural",
             base_template(
                 content,
                 preheader=f"{purchaser_name} sent you {duration_months} month(s) of OBSIDIAN Neural.",
@@ -421,10 +427,10 @@ class EmailService:
         content = f"""
         {section_title("Subscription expiring")}
         <h1 style="color:#1a1a1a;font-size:24px;font-weight:700;margin:0 0 16px;">
-          Your <span style="color:#b8605c;">{tier_display}</span> plan expires {time_label}.
+          Your <span style="color:#b8605c;">{tier_display}</span> trip ends {time_label}.
         </h1>
         <p style="color:#4a4a4a;font-size:15px;line-height:1.7;margin:0 0 24px;">
-          After expiry, your account reverts to the free plan. All your data and settings are saved.
+          After expiry, your account reverts to the free plan. All your data and settings are saved &mdash; nothing's lost, just paused.
         </p>
         {btn_primary("Keep my subscription →", dashboard)}
         {btn_secondary("Manage billing", dashboard)}
@@ -461,10 +467,13 @@ class EmailService:
         content = f"""
         {section_title("Getting started")}
         <h1 style="color:#1a1a1a;font-size:24px;font-weight:700;margin:0 0 16px;">
-          Need a hand getting started?
+          Haven't hit Generate yet?
         </h1>
+        <p style="color:#4a4a4a;font-size:15px;line-height:1.7;margin:0 0 8px;">
+          That's the most honest impostor syndrome move there is &mdash; the gear's installed, the key's pasted, and somehow the button still feels one click too far.
+        </p>
         <p style="color:#4a4a4a;font-size:15px;line-height:1.7;margin:0 0 24px;">
-          You haven't generated any samples yet &mdash; no worries. Here's the quickest path.
+          No worries. Here's the quickest path to your first hallucinated sample.
         </p>
 
         {section_title("3 steps to your first sample")}
@@ -499,10 +508,10 @@ class EmailService:
 
         return EmailService._send_email(
             email,
-            "Need help getting started with OBSIDIAN Neural?",
+            "That button won't click itself",
             base_template(
                 content,
-                preheader="You haven't generated anything yet. Here's how to get started in 3 steps.",
+                preheader="You haven't generated anything yet. Here's how to start hallucinating in 3 steps.",
                 unsubscribe_token=unsub,
             ),
             email_type="no_generation_help",
@@ -521,7 +530,7 @@ class EmailService:
 
         templates = {
             2: {
-                "subject": "5 creative ways to use OBSIDIAN Neural",
+                "subject": "5 ways to hallucinate on purpose",
                 "preheader": "Ideas to integrate AI generation into your real workflow.",
                 "h1": "5 ideas for your workflow",
                 "body": f"""
@@ -555,7 +564,7 @@ class EmailService:
                 """,
             },
             4: {
-                "subject": "How's it going?",
+                "subject": "How's the trip going?",
                 "preheader": "One last check-in — I'd love to hear how you're using OBSIDIAN Neural.",
                 "h1": "How's it going?",
                 "body": f"""
@@ -652,7 +661,7 @@ class EmailService:
 
         return EmailService._send_email(
             email,
-            "Exclusive press access: OBSIDIAN Neural VST",
+            "Exclusive press access: OBSIDIAN Neural — the VST that hallucinates live",
             base_template(
                 content,
                 preheader="Your API key, download links and setup guide for OBSIDIAN Neural.",
@@ -837,7 +846,7 @@ class EmailService:
         content = f"""
         {section_title("Your free month is waiting")}
         <h1 style="color:#1a1a1a;font-size:24px;font-weight:700;margin:0 0 16px;">
-          You joined 2 days ago — have you tried it yet?
+          You joined 2 days ago — have you hallucinated anything yet?
         </h1>
         <p style="color:#4a4a4a;font-size:15px;line-height:1.7;margin:0 0 24px;">
           Your account is ready. And there's still a 100% OFF code with your name on it.
@@ -904,7 +913,7 @@ class EmailService:
           One week in — don't miss your free month.
         </h1>
         <p style="color:#4a4a4a;font-size:15px;line-height:1.7;margin:0 0 24px;">
-          This is the last reminder. After this, the code is gone.
+          This is the last reminder. After this, the code is gone for good.
         </p>
 
         {info_box(f'''
@@ -938,10 +947,10 @@ class EmailService:
             user_id=user_id,
             db=db,
         )
-    
+
     @staticmethod
     def send_vst_license_email(
-        email: str, license_key: str, session_id :str, user_id: int = None, db: Session = None
+        email: str, license_key: str, session_id: str, user_id: int = None, db: Session = None
     ) -> bool:
         unsub = EmailService._get_unsubscribe_token(user_id, db) if db else ""
 
@@ -949,7 +958,7 @@ class EmailService:
         {section_title("Your OBSIDIAN Neural license")}
         <h1 style="color:#1a1a1a;font-size:26px;font-weight:700;margin:0 0 16px;line-height:1.3;">
           Thank you for your purchase.<br/>
-          <span style="color:#b8605c;">Here's your license key.</span>
+          <span style="color:#b8605c;">You just met your first model.</span>
         </h1>
         <p style="color:#4a4a4a;font-size:15px;line-height:1.7;margin:0 0 24px;">
           Keep this key safe — it's tied to your purchase and lets you activate
@@ -1005,6 +1014,10 @@ class EmailService:
           </tr>
         </table>
 
+        <p style="color:#4a4a4a;font-size:13px;font-style:italic;line-height:1.7;margin:0 0 24px;">
+          One model down. Eight more are waiting, whenever you're curious.
+        </p>
+
         <p style="color:#4a4a4a;font-size:14px;margin:24px 0 0;line-height:1.6;">
           Need to move to a new machine, or run out of activation slots? Just reply to
           this email and I'll help.<br/>
@@ -1014,7 +1027,7 @@ class EmailService:
 
         return EmailService._send_email(
             email,
-            "Your OBSIDIAN Neural license key",
+            "Your OBSIDIAN Neural license key — your first model awaits",
             base_template(
                 content,
                 preheader="Your license key and activation guide.",
@@ -1023,5 +1036,59 @@ class EmailService:
             email_type="vst_license",
             user_id=user_id,
             unsubscribe_url=get_unsubscribe_url(unsub),
+            db=db,
+        )
+
+    @staticmethod
+    def send_license_upsell_reminder(
+        email: str, user_id: int = None, db: Session = None
+    ) -> bool:
+        unsub = (
+            EmailService._get_unsubscribe_token(user_id, db) if (db and user_id) else ""
+        )
+
+        content = f"""
+        {section_title("One model down")}
+        <h1 style="color:#1a1a1a;font-size:26px;font-weight:700;margin:0 0 16px;line-height:1.3;">
+          You had fun with one model?<br/>
+          <span style="color:#b8605c;">Eight more are waiting.</span>
+        </h1>
+        <p style="color:#4a4a4a;font-size:15px;line-height:1.7;margin:0 0 8px;">
+          Your CPU Edition is yours forever &mdash; that part never changes. Stable Audio 3 Medium, fully offline, no subscription required.
+        </p>
+        <p style="color:#4a4a4a;font-size:15px;line-height:1.7;margin:0 0 24px;">
+          But there are 8 other engines you haven't met yet &mdash; trained on different sounds, tuned for different tempos, each with its own way of hallucinating. They're one subscription away, whenever the curiosity hits.
+        </p>
+
+        {section_title("What you'd unlock")}
+        <table cellpadding="0" cellspacing="0" border="0" width="100%" style="margin:0 0 24px;">
+          {''.join([f'<tr><td style="padding:8px 0;color:#4a4a4a;font-size:14px;line-height:1.6;"><span style="color:#b8605c;font-weight:700;margin-right:8px;">→</span> {t}</td></tr>' for t in [
+            "Foundation-1 &mdash; melodic & harmonic phrasing",
+            "Audialab EDM Elements &mdash; high-energy leads & plucks",
+            "StableBeaT &mdash; trap beats & 808 grooves",
+            "RC Infinite Pianos &mdash; grand & electric pianos",
+            "...and 4 more, each tuned for a different moment in your set",
+          ]])}
+        </table>
+
+        {btn_primary("See the other 8 →", f"{settings.FRONTEND_URL}/pricing.php")}
+
+        <p style="color:#4a4a4a;font-size:14px;margin:24px 0 0;line-height:1.6;">
+          No pressure &mdash; the CPU Edition you already own keeps working exactly as it does today, subscription or not.<br/>
+          <span style="color:#b8605c;font-weight:600;">— Anthony, creator of OBSIDIAN Neural</span>
+        </p>
+        """
+
+        return EmailService._send_email(
+            email,
+            "You had fun with one model? Eight more are waiting.",
+            base_template(
+                content,
+                preheader="Your CPU Edition is yours forever. 8 more engines are one subscription away.",
+                unsubscribe_token=unsub,
+            ),
+            email_type="license_upsell",
+            unsubscribe_url=get_unsubscribe_url(unsub),
+            user_id=user_id,
             db=db,
         )
