@@ -121,6 +121,8 @@ class Settings:
 
     LOCAL_BETA_PROMO_CODE = os.getenv("LOCAL_BETA_PROMO_CODE")
 
+    BUILD_UPDATE_TOKEN = os.getenv("BUILD_UPDATE_TOKEN")
+
     VERIFICATION_PROMPT_STARTS = [
         "steady",
         "deep",

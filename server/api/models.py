@@ -307,3 +307,8 @@ class LicenseReleaseRequest(BaseModel):
 
 class VstCheckoutRequest(BaseModel):
     email: Optional[EmailStr] = None
+
+class BuildVersionUpdate(BaseModel):
+    platform: str
+    version: str
+    asset_name: str

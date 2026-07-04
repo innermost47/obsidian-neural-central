@@ -1,11 +1,13 @@
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Header
 from fastapi.responses import RedirectResponse
 from sqlalchemy.orm import Session
+from datetime import datetime
 from server.core.database import get_db, User, BuildVersion
-from server.api.models import LicenseActivateRequest, LicenseReleaseRequest, VstCheckoutRequest
+from server.api.models import LicenseActivateRequest, LicenseReleaseRequest, VstCheckoutRequest, BuildVersionUpdate
 from server.services.license_service import LicenseService, LicenseActivationError
 from server.services.stripe_service import StripeService
 from server.api.dependencies import get_current_active_user, get_current_user_optional
+from server.config import settings
 
 router = APIRouter(prefix="/license", tags=["License"])
 
@@ -147,21 +149,57 @@ def get_latest_version(
         if platform not in valid_platforms:
             raise HTTPException(status_code=400, detail="Invalid platform")
         query = query.filter(BuildVersion.platform == platform)
-
     rows = query.all()
     if not rows:
         return {"available": False}
 
     def serialize(row):
+        try:
+            build_number = int(row.version)
+        except (TypeError, ValueError):
+            build_number = None
         return {
             "platform": row.platform,
-            "released_at": row.released_at.isoformat() if row.released_at else None,
+            "latest_build_number": build_number,
             "asset_name": row.asset_name,
         }
 
     if platform:
         return {"available": True, **serialize(rows[0])}
-
     return {"available": True, "platforms": [serialize(r) for r in rows]}
 
+@router.post("/version/update", status_code=204)
+def update_build_version(
+    payload: BuildVersionUpdate,
+    authorization: str = Header(None),
+    db: Session = Depends(get_db),
+):
+    expected_token = settings.BUILD_UPDATE_TOKEN
+    if not expected_token:
+        raise HTTPException(status_code=500, detail="Server misconfigured")
+    if authorization != f"Bearer {expected_token}":
+        raise HTTPException(status_code=401, detail="Unauthorized")
 
+    valid_platforms = {"windows", "macos", "linux"}
+    if payload.platform not in valid_platforms:
+        raise HTTPException(status_code=400, detail="Invalid platform")
+
+    row = db.query(BuildVersion).filter(BuildVersion.platform == payload.platform).first()
+    now = datetime.utcnow()
+
+    if row:
+        row.version = payload.version
+        row.asset_name = payload.asset_name
+        row.released_at = now
+        row.updated_at = now
+    else:
+        row = BuildVersion(
+            platform=payload.platform,
+            version=payload.version,
+            asset_name=payload.asset_name,
+            released_at=now,
+        )
+        db.add(row)
+
+    db.commit()
+    return
