@@ -119,6 +119,8 @@ class Settings:
     GITHUB_RELEASE_TOKEN = os.getenv("GITHUB_RELEASE_TOKEN")
     GITHUB_COMMERCIAL_REPO = os.getenv("GITHUB_COMMERCIAL_REPO")
 
+    LOCAL_BETA_PROMO_CODE = os.getenv("LOCAL_BETA_PROMO_CODE")
+
     VERIFICATION_PROMPT_STARTS = [
         "steady",
         "deep",

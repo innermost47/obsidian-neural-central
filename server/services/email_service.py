@@ -19,7 +19,7 @@ from server.templates.email_template import (
     download_buttons,
     get_unsubscribe_url,
 )
-
+from server.core.database import License
 from concurrent.futures import ThreadPoolExecutor
 
 executor = ThreadPoolExecutor(max_workers=5)
@@ -125,13 +125,47 @@ class EmailService:
         executor.submit(_execute_dispatch)
 
         return True
+    
+    @staticmethod
+    def _get_promo_section(db: Session = None) -> str:
+        if not db:
+            return ""
+
+        promo_code = settings.LOCAL_BETA_PROMO_CODE
+        if not promo_code:
+            return ""
+
+        licenses_issued = db.query(License).count()
+        if licenses_issued >= 500:
+            return ""
+
+        return f"""
+        {section_title("Beta access — Local Edition")}
+        <p style="color:#4a4a4a;font-size:15px;line-height:1.7;margin:0 0 8px;">
+          There's a version that runs <strong>entirely on your CPU</strong>. No cloud, no server, no internet required.
+        </p>
+        <p style="color:#4a4a4a;font-size:14px;line-height:1.7;margin:0 0 16px;">
+          With this code, generation is <strong>free and unlimited</strong> on your own machine — first 500 only.
+        </p>
+        {info_box(f'''
+          <table cellpadding="0" cellspacing="0" border="0" width="100%">
+            {stat_row("Promo code", f'<code style="font-family:Courier Prime,monospace;color:#b8605c;font-weight:700;">{promo_code}</code>')}
+          </table>
+        ''')}
+        <p style="color:#4a4a4a;font-size:14px;line-height:1.7;margin:0 0 8px;">
+          Head to <a href="{settings.FRONTEND_URL}/local.php" style="color:#b8605c;">{settings.FRONTEND_URL}/local.php</a>, click <strong>"Already have a beta code"</strong>, and enter it with your email in the Stripe tab that opens.
+        </p>
+        <p style="color:#4a4a4a;font-size:13px;font-style:italic;line-height:1.6;margin:0 0 24px;">
+          macOS: Apple Silicon (M1+) only — Intel Macs not supported.
+        </p>
+        """
 
     @staticmethod
     def send_welcome_email(
         email: str, api_key: str, user_id: int, db: Session = None
     ) -> bool:
         unsub = EmailService._get_unsubscribe_token(user_id, db) if db else ""
-
+        promo_section = EmailService._get_promo_section(db)
         content = f"""
         {section_title("Welcome to OBSIDIAN Neural")}
         <h1 style="color:#1a1a1a;font-size:26px;font-weight:700;margin:0 0 16px;line-height:1.3;">
@@ -144,7 +178,7 @@ class EmailService:
         <p style="color:#4a4a4a;font-size:14px;font-style:italic;line-height:1.7;margin:0 0 24px;">
           Finally, a tool that justifies your impostor syndrome.
         </p>
-
+        {promo_section}
         {section_title("Your credentials")}
         {info_box(f'''
           <table cellpadding="0" cellspacing="0" border="0" width="100%">
