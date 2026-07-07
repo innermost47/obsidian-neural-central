@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Header
 from fastapi.responses import RedirectResponse
 from sqlalchemy.orm import Session
 from datetime import datetime
-from server.core.database import get_db, User, BuildVersion
+from server.core.database import get_db, User, BuildVersion, License
 from server.api.models import LicenseActivateRequest, LicenseReleaseRequest, VstCheckoutRequest, BuildVersionUpdate
 from server.services.license_service import LicenseService, LicenseActivationError
 from server.services.stripe_service import StripeService
@@ -203,3 +203,9 @@ def update_build_version(
 
     db.commit()
     return
+
+@router.get("/count/under-500")
+def check_license_count_threshold(db: Session = Depends(get_db)):
+
+    count = db.query(License).filter(License.status == "active").count()
+    return {"under_500": count < 500}
