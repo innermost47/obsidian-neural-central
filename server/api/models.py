@@ -306,7 +306,8 @@ class LicenseReleaseRequest(BaseModel):
     machine_id: str
 
 class VstCheckoutRequest(BaseModel):
-    email: Optional[EmailStr] = None
+    email: str | None = None
+    promo_code: str | None = None
 
 class BuildVersionUpdate(BaseModel):
     platform: str

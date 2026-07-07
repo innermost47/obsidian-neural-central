@@ -126,22 +126,35 @@ class StripeService:
         return session
     
     @staticmethod
-    def create_vst_checkout_session(buyer_email: str = None):
-        session = stripe.checkout.Session.create(
-            customer_email=buyer_email,
-            payment_method_types=["card"],
-            line_items=[
+    def create_vst_checkout_session(buyer_email: str = None, promo_code: str = None):
+        session_params = {
+            "customer_email": buyer_email,
+            "payment_method_types": ["card"],
+            "line_items": [
                 {
                     "price": settings.STRIPE_PRICE_VST,
                     "quantity": 1,
                 }
             ],
-            mode="payment",
-            success_url=f"{settings.FRONTEND_URL}/vst-success.php?session_id={{CHECKOUT_SESSION_ID}}",
-            cancel_url=f"{settings.FRONTEND_URL}/local.php",
-            metadata={
+            "mode": "payment",
+            "success_url": f"{settings.FRONTEND_URL}/vst-success.php?session_id={{CHECKOUT_SESSION_ID}}",
+            "cancel_url": f"{settings.FRONTEND_URL}/local.php",
+            "metadata": {
                 "type": "vst_license",
             },
-            allow_promotion_codes=True,
-        )
+        }
+
+        discount_applied = False
+        if promo_code:
+            promo_list = stripe.PromotionCode.list(code=promo_code, active=True, limit=1)
+            if promo_list.data:
+                session_params["discounts"] = [
+                    {"promotion_code": promo_list.data[0].id}
+                ]
+                discount_applied = True
+
+        if not discount_applied:
+            session_params["allow_promotion_codes"] = True
+
+        session = stripe.checkout.Session.create(**session_params)
         return session

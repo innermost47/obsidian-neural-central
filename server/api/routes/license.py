@@ -38,7 +38,10 @@ def release_license(
 
 @router.post("/checkout")
 def create_vst_checkout(request: VstCheckoutRequest):
-    session = StripeService.create_vst_checkout_session(buyer_email=request.email)
+    session = StripeService.create_vst_checkout_session(
+        buyer_email=request.email,
+        promo_code=request.promo_code,
+    )
     return {"checkout_url": session.url}
 
 @router.get("/by-session/{session_id}")
