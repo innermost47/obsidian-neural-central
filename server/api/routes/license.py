@@ -107,7 +107,7 @@ def release_machine_authenticated(
 @router.get("/download")
 @limiter.limit("5/minute")
 async def download_local_edition(
-    _: Request,  
+    request: Request,  
     platform: str = Query(...),
     session_id: str = Query(None),
     current_user: User = Depends(get_current_user_optional),
