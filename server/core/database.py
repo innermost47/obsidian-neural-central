@@ -458,6 +458,7 @@ class License(Base):
     amount_paid = Column(Integer, nullable=True)
     expiration_date = Column(DateTime, nullable=True)
     created_at = Column(DateTime, default=func.now(), nullable=False)
+    key_retrieved_at = Column(DateTime, nullable=True)
 
     user = relationship("User", foreign_keys=[user_id])
     activations = relationship(

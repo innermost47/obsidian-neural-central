@@ -46,8 +46,6 @@ def create_vst_checkout(request: VstCheckoutRequest):
 
 @router.get("/by-session/{session_id}")
 def get_license_by_session(session_id: str, db: Session = Depends(get_db)):
-    from server.core.database import License
-
     license_obj = (
         db.query(License)
         .filter(License.stripe_checkout_session_id == session_id)
@@ -56,6 +54,12 @@ def get_license_by_session(session_id: str, db: Session = Depends(get_db)):
 
     if not license_obj:
         return {"ready": False}
+
+    if license_obj.key_retrieved_at is not None:
+        raise HTTPException(status_code=410, detail="This link has already been used")
+
+    license_obj.key_retrieved_at = datetime.utcnow()
+    db.commit()
 
     return {
         "ready": True,
@@ -107,8 +111,6 @@ async def download_local_edition(
     current_user: User = Depends(get_current_user_optional),
     db: Session = Depends(get_db),
 ):
-    from server.core.database import License
-
     valid_platforms = {"windows", "macos", "linux"}
     if platform not in valid_platforms:
         raise HTTPException(status_code=400, detail="Invalid platform")
