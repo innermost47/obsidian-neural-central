@@ -3,7 +3,7 @@ from fastapi.responses import RedirectResponse
 from sqlalchemy.orm import Session
 from datetime import datetime
 from server.core.limiter import limiter
-from server.core.database import get_db, User, BuildVersion, License
+from server.core.database import get_db, User, BuildVersion, License, LicenseActivation
 from server.api.models import LicenseActivateRequest, LicenseReleaseRequest, VstCheckoutRequest, BuildVersionUpdate
 from server.services.license_service import LicenseService, LicenseActivationError
 from server.services.stripe_service import StripeService
@@ -76,8 +76,6 @@ def release_machine_authenticated(
     current_user: User = Depends(get_current_active_user),
     db: Session = Depends(get_db),
 ):
-    from server.core.database import License, LicenseActivation
-
     license_obj = (
         db.query(License)
         .filter(License.license_key == license_key)
@@ -103,45 +101,28 @@ def release_machine_authenticated(
     db.commit()
     return {"success": True}
 
-
-@router.get("/download")
+@router.get("/download/check")
 @limiter.limit("5/minute")
-async def download_local_edition(
-    request: Request,  
+async def check_local_edition_download(
+    request: Request,
     platform: str = Query(...),
     session_id: str = Query(None),
     current_user: User = Depends(get_current_user_optional),
     db: Session = Depends(get_db),
 ):
-    valid_platforms = {"windows", "macos", "linux"}
-    if platform not in valid_platforms:
-        raise HTTPException(status_code=400, detail="Invalid platform")
+    asset_url = await LicenseService.resolve_local_edition_download(platform, session_id, current_user, db)
+    return {"url": asset_url}
 
-    license_obj = None
-    if session_id:
-        license_obj = (
-            db.query(License)
-            .filter(License.stripe_checkout_session_id == session_id)
-            .first()
-        )
-    elif current_user:
-        license_obj = (
-            db.query(License)
-            .filter(License.user_id == current_user.id, License.status == "active")
-            .first()
-        )
-
-    if not license_obj or license_obj.status != "active":
-        raise HTTPException(status_code=403, detail="No valid license found")
-
-    asset_url, release, asset = await LicenseService.resolve_github_asset(platform)
-    if not asset_url:
-        raise HTTPException(status_code=404, detail="Build not available for this platform")
-    try:
-        LicenseService.upsert_build_version(db, platform, release, asset)
-    except Exception:
-        pass
-
+@router.get("/download")
+@limiter.limit("5/minute")
+async def download_local_edition(
+    request: Request,
+    platform: str = Query(...),
+    session_id: str = Query(None),
+    current_user: User = Depends(get_current_user_optional),
+    db: Session = Depends(get_db),
+):
+    asset_url = await LicenseService.resolve_local_edition_download(platform, session_id, current_user, db)
     return RedirectResponse(url=asset_url, status_code=302)
 
 @router.get("/version/latest")
@@ -215,3 +196,4 @@ def check_license_count_threshold(db: Session = Depends(get_db)):
 
     count = db.query(License).filter(License.status == "active").count()
     return {"under_500": count < 500}
+

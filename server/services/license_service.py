@@ -1,12 +1,12 @@
 import struct
 import httpx
-import re
 import secrets
 from datetime import datetime, timezone
 from sqlalchemy.orm import Session
+from fastapi import HTTPException
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from server.config import settings
-from server.core.database import License, LicenseActivation, BuildVersion
+from server.core.database import License, LicenseActivation, BuildVersion, User
 
 class LicenseActivationError(Exception):
     def __init__(self, message: str):
@@ -164,6 +164,44 @@ class LicenseService:
         db.commit()
         return True
     
+    @staticmethod
+    async def resolve_local_edition_download(
+        platform: str,
+        session_id: str | None,
+        current_user: User | None,
+        db: Session,
+    ):
+        valid_platforms = {"windows", "macos", "linux"}
+        if platform not in valid_platforms:
+            raise HTTPException(status_code=400, detail="Invalid platform")
+
+        license_obj = None
+        if session_id:
+            license_obj = (
+                db.query(License)
+                .filter(License.stripe_checkout_session_id == session_id)
+                .first()
+            )
+        elif current_user:
+            license_obj = (
+                db.query(License)
+                .filter(License.user_id == current_user.id, License.status == "active")
+                .first()
+            )
+
+        if not license_obj or license_obj.status != "active":
+            raise HTTPException(status_code=403, detail="No valid license found")
+
+        asset_url, release, asset = await LicenseService.resolve_github_asset(platform)
+        if not asset_url:
+            raise HTTPException(status_code=404, detail="Build not available for this platform")
+        try:
+            LicenseService.upsert_build_version(db, platform, release, asset)
+        except Exception:
+            pass
+
+        return asset_url
+        
     @staticmethod
     async def resolve_github_asset(platform: str) -> tuple[str | None, dict, dict]:
         platform_markers = {
