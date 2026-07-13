@@ -14,12 +14,10 @@ router = APIRouter(prefix="/license", tags=["License"])
 
 
 @router.post("/activate")
-def activate_license(
-    request: LicenseActivateRequest,
-    db: Session = Depends(get_db),
-):
+@limiter.limit("10/minute")
+def activate_license(request: Request, request_body: LicenseActivateRequest, db: Session = Depends(get_db)):
     try:
-        result = LicenseService.activate(db, request.key.strip(), request.machine_id.strip())
+        result = LicenseService.activate(db, request_body.key.strip(), request_body.machine_id.strip())
     except LicenseActivationError as e:
         return {"success": False, "error": e.message}
 
@@ -38,15 +36,17 @@ def release_license(
     return {"success": released}
 
 @router.post("/checkout")
-def create_vst_checkout(request: VstCheckoutRequest):
+@limiter.limit("5/minute")
+def create_vst_checkout(request: Request, request_body: VstCheckoutRequest):
     session = StripeService.create_vst_checkout_session(
-        buyer_email=request.email,
-        promo_code=request.promo_code,
+        buyer_email=request_body.email,
+        promo_code=request_body.promo_code,
     )
     return {"checkout_url": session.url}
 
 @router.get("/by-session/{session_id}")
-def get_license_by_session(session_id: str, db: Session = Depends(get_db)):
+@limiter.limit("10/minute")
+def get_license_by_session(request: Request, session_id: str, db: Session = Depends(get_db)):
     license_obj = (
         db.query(License)
         .filter(License.stripe_checkout_session_id == session_id)
