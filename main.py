@@ -4,6 +4,10 @@ from fastapi.middleware.cors import CORSMiddleware
 import uvicorn
 import logging
 import asyncio
+from slowapi import _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
+from slowapi.middleware import SlowAPIMiddleware
+from server.core.limiter import limiter
 from server.config import settings
 from server.core.database import init_db, SessionLocal, Provider
 from server.services.provider_ping_service import ProviderPingService
@@ -162,6 +166,9 @@ def root():
 def health_check():
     return {"status": "healthy"}
 
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+app.add_middleware(SlowAPIMiddleware)
 
 if __name__ == "__main__":
     logging.basicConfig(

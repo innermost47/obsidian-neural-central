@@ -1,7 +1,8 @@
-from fastapi import APIRouter, Depends, HTTPException, Query, Header
+from fastapi import APIRouter, Depends, HTTPException, Query, Header, Request
 from fastapi.responses import RedirectResponse
 from sqlalchemy.orm import Session
 from datetime import datetime
+from server.core.limiter import limiter
 from server.core.database import get_db, User, BuildVersion, License
 from server.api.models import LicenseActivateRequest, LicenseReleaseRequest, VstCheckoutRequest, BuildVersionUpdate
 from server.services.license_service import LicenseService, LicenseActivationError
@@ -68,7 +69,6 @@ def get_license_by_session(session_id: str, db: Session = Depends(get_db)):
         "max_activations": license_obj.max_activations,
     }
 
-
 @router.delete("/{license_key}/machine/{machine_id}")
 def release_machine_authenticated(
     license_key: str,
@@ -105,7 +105,9 @@ def release_machine_authenticated(
 
 
 @router.get("/download")
+@limiter.limit("5/minute")
 async def download_local_edition(
+    _: Request,  
     platform: str = Query(...),
     session_id: str = Query(None),
     current_user: User = Depends(get_current_user_optional),
@@ -141,7 +143,6 @@ async def download_local_edition(
         pass
 
     return RedirectResponse(url=asset_url, status_code=302)
-
 
 @router.get("/version/latest")
 def get_latest_version(
