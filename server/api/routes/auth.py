@@ -1,7 +1,6 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, Request
 from fastapi.responses import RedirectResponse
 from sqlalchemy.orm import Session
-import pyotp
 import hashlib
 import uuid
 from datetime import datetime, timedelta
@@ -19,6 +18,7 @@ from server.api.models import (
     PressRegister,
 )
 import stripe
+from server.core.limiter import limiter
 from server.core.database import get_db, User, PressRequest, Provider
 from server.api.dependencies import (
     get_user_from_api_key,
@@ -45,7 +45,7 @@ from server.services.admin_notification_service import AdminNotificationService
 from server.services.email_validator import EmailValidator
 from server.services.provider_notification_service import ProviderNotificationService
 from server.config import settings
-import secrets
+import secrets as secrets_module
 from fastapi import Header
 
 
@@ -53,7 +53,7 @@ router = APIRouter(prefix="/auth", tags=["Authentication"])
 
 
 async def verify_press_key(x_press_secret_key: str = Header(...)):
-    if x_press_secret_key != settings.PRESS_REGISTRATION_KEY:
+    if not secrets_module.compare_digest(x_press_secret_key, settings.PRESS_REGISTRATION_KEY):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid Press Registration Key",
@@ -67,7 +67,9 @@ def generate_unsubscribe_token() -> str:
 
 
 @router.post("/register", response_model=Token)
+@limiter.limit("5/hour")
 async def register(
+    request: Request,
     user_data: UserRegister,
     db: Session = Depends(get_db),
 ):
@@ -179,7 +181,9 @@ async def verify_email(token: str, db: Session = Depends(get_db)):
 
 
 @router.post("/resend-verification")
+@limiter.limit("3/hour")
 async def resend_verification(
+    request: Request,
     email_data: EmailVerificationRequest,
     db: Session = Depends(get_db),
 ):
@@ -209,14 +213,16 @@ async def resend_verification(
 
 
 @router.post("/forgot-password")
+@limiter.limit("3/hour")
 async def forgot_password(
+    request: Request,
     reset_request: PasswordResetRequest,
     db: Session = Depends(get_db),
 ):
     user = db.query(User).filter(User.email == reset_request.email).first()
 
     if user:
-        reset_token = secrets.token_urlsafe(32)
+        reset_token = secrets_module.token_urlsafe(32)
         user.reset_token = reset_token
         user.reset_token_expires = datetime.utcnow() + timedelta(hours=1)
         db.commit()
@@ -256,23 +262,17 @@ async def reset_password(
 async def setup_2fa(
     current_user: User = Depends(get_current_active_user), db: Session = Depends(get_db)
 ):
-    print(f"🔍 Setup 2FA for user {current_user.id} - {current_user.email}")
-
     if current_user.two_factor_enabled:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST, detail="2FA already enabled"
         )
 
     secret = generate_2fa_secret()
-    print(f"✅ Generated secret: {secret[:8]}...")
-
     qr_code = get_2fa_qr_code(current_user.email, secret)
 
     current_user.two_factor_secret_temp = secret
     db.commit()
     db.refresh(current_user)
-
-    print(f"✅ Secret saved to DB: {current_user.two_factor_secret_temp[:8]}...")
 
     return {
         "secret": secret,
@@ -287,23 +287,12 @@ async def verify_2fa_setup(
     current_user: User = Depends(get_current_active_user),
     db: Session = Depends(get_db),
 ):
-    print(f"🔍 Verify 2FA for user {current_user.id}")
-    print(
-        f"   - two_factor_secret_temp exists: {bool(current_user.two_factor_secret_temp)}"
-    )
-    print(f"   - Provided code: {verify_data.code}")
-
     if not current_user.two_factor_secret_temp:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST, detail="2FA setup not initiated"
         )
 
-    totp = pyotp.TOTP(current_user.two_factor_secret_temp)
-    expected_code = totp.now()
-    print(f"   - Expected code: {expected_code}")
-
     is_valid = verify_2fa_token(current_user.two_factor_secret_temp, verify_data.code)
-    print(f"   - Is valid: {is_valid}")
 
     if not is_valid:
         raise HTTPException(
@@ -314,12 +303,10 @@ async def verify_2fa_setup(
     current_user.two_factor_secret_temp = None
     current_user.two_factor_enabled = True
 
-    backup_codes = [secrets.token_hex(4) for _ in range(10)]
+    backup_codes = [secrets_module.token_hex(4) for _ in range(10)]
     current_user.backup_codes = ",".join(backup_codes)
 
     db.commit()
-
-    print(f"✅ 2FA enabled successfully for user {current_user.id}")
 
     return {"message": "2FA enabled successfully", "backup_codes": backup_codes}
 
@@ -349,7 +336,8 @@ async def disable_2fa(
 
 
 @router.post("/login", response_model=Token)
-def login(user_data: UserLogin, db: Session = Depends(get_db)):
+@limiter.limit("10/minute")
+def login(request: Request, user_data: UserLogin, db: Session = Depends(get_db)):
     user = db.query(User).filter(User.email == user_data.email).first()
 
     if not user or not user.hashed_password or not verify_password(
@@ -382,7 +370,8 @@ def login(user_data: UserLogin, db: Session = Depends(get_db)):
 
 
 @router.post("/login/2fa", response_model=Token)
-def login_2fa(two_factor_data: TwoFactorLogin, db: Session = Depends(get_db)):
+@limiter.limit("5/minute")
+def login_2fa(request: Request, two_factor_data: TwoFactorLogin, db: Session = Depends(get_db)):
     payload = verify_verification_token(two_factor_data.temp_token)
     if not payload.get("2fa_pending"):
         raise HTTPException(
@@ -618,9 +607,6 @@ async def delete_account(
     if current_user.stripe_subscription_id:
         try:
             StripeService.cancel_subscription(current_user.stripe_subscription_id)
-            print(
-                f"✅ Stripe subscription {current_user.stripe_subscription_id} canceled"
-            )
         except Exception as e:
             print(f"⚠️ Error canceling Stripe subscription: {e}")
 
@@ -628,17 +614,8 @@ async def delete_account(
         try:
             stripe.api_key = settings.STRIPE_SECRET_KEY
             stripe.Customer.delete(current_user.stripe_customer_id)
-            print(f"✅ Stripe customer {current_user.stripe_customer_id} deleted")
         except Exception as e:
             print(f"⚠️ Error deleting Stripe customer: {e}")
-
-    if current_user.oauth_provider == "google" and current_user.oauth_id:
-        try:
-            print(
-                f"✅ OAuth user deleted: {current_user.oauth_provider} - {current_user.oauth_id}"
-            )
-        except Exception as e:
-            print(f"⚠️ Error with OAuth cleanup: {e}")
 
     user_email = current_user.email
     user_id = current_user.id
@@ -652,10 +629,6 @@ async def delete_account(
 
     db.delete(current_user)
     db.commit()
-
-    print(
-        f"✅ User account deleted: {user_email} (ID: {user_id}, OAuth: {oauth_provider or 'None'})"
-    )
 
     return {
         "message": "Account successfully deleted",
@@ -693,7 +666,7 @@ async def register_press_request(
     db: Session = Depends(get_db),
     _: str = Depends(verify_press_key),
 ):
-    token = secrets.token_hex(32)
+    token = secrets_module.token_hex(32)
     token_hash = hashlib.sha256(token.encode()).hexdigest()
     payload = {
         "email": user_data.email,
