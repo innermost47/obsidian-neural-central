@@ -309,7 +309,10 @@ class VstCheckoutRequest(BaseModel):
     email: str | None = None
     promo_code: str | None = None
 
-class BuildVersionUpdate(BaseModel):
+class BuildEntry(BaseModel):
     platform: str
-    version: str
     asset_name: str
+
+class BuildVersionsUpdate(BaseModel):
+    version: str
+    builds: list[BuildEntry] = Field(..., min_length=1)

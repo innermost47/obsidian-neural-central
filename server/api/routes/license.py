@@ -4,7 +4,7 @@ from sqlalchemy.orm import Session
 from datetime import datetime
 from server.core.limiter import limiter
 from server.core.database import get_db, User, BuildVersion, License, LicenseActivation
-from server.api.models import LicenseActivateRequest, LicenseReleaseRequest, VstCheckoutRequest, BuildVersionUpdate
+from server.api.models import LicenseActivateRequest, LicenseReleaseRequest, VstCheckoutRequest, BuildVersionsUpdate
 from server.services.license_service import LicenseService, LicenseActivationError
 from server.services.stripe_service import StripeService
 from server.api.dependencies import get_current_active_user, get_current_user_optional
@@ -156,8 +156,8 @@ def get_latest_version(
     return {"available": True, "platforms": [serialize(r) for r in rows]}
 
 @router.post("/version/update", status_code=204)
-def update_build_version(
-    payload: BuildVersionUpdate,
+def update_build_versions(
+    payload: BuildVersionsUpdate,
     authorization: str = Header(None),
     db: Session = Depends(get_db),
 ):
@@ -168,27 +168,37 @@ def update_build_version(
         raise HTTPException(status_code=401, detail="Unauthorized")
 
     valid_platforms = {"windows", "macos", "linux"}
-    if payload.platform not in valid_platforms:
-        raise HTTPException(status_code=400, detail="Invalid platform")
+    seen = set()
+    for build in payload.builds:
+        if build.platform not in valid_platforms:
+            raise HTTPException(status_code=400, detail=f"Invalid platform: {build.platform}")
+        if build.platform in seen:
+            raise HTTPException(status_code=400, detail=f"Duplicate platform: {build.platform}")
+        seen.add(build.platform)
 
-    row = db.query(BuildVersion).filter(BuildVersion.platform == payload.platform).first()
     now = datetime.utcnow()
 
-    if row:
-        row.version = payload.version
-        row.asset_name = payload.asset_name
-        row.released_at = now
-        row.updated_at = now
-    else:
-        row = BuildVersion(
-            platform=payload.platform,
-            version=payload.version,
-            asset_name=payload.asset_name,
-            released_at=now,
-        )
-        db.add(row)
-
-    db.commit()
+    try:
+        for build in payload.builds:
+            row = db.query(BuildVersion).filter(BuildVersion.platform == build.platform).first()
+            if row:
+                row.version = payload.version
+                row.asset_name = build.asset_name
+                row.released_at = now
+                row.updated_at = now
+            else:
+                db.add(
+                    BuildVersion(
+                        platform=build.platform,
+                        version=payload.version,
+                        asset_name=build.asset_name,
+                        released_at=now,
+                    )
+                )
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
     return
 
 @router.get("/count/under-500")
