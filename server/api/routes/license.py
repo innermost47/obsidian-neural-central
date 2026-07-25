@@ -106,11 +106,14 @@ def release_machine_authenticated(
 async def check_local_edition_download(
     request: Request,
     platform: str = Query(...),
+    version: str = Query(None),
     session_id: str = Query(None),
     current_user: User = Depends(get_current_user_optional),
     db: Session = Depends(get_db),
 ):
-    asset_url = await LicenseService.resolve_local_edition_download(platform, session_id, current_user, db)
+    asset_url = await LicenseService.resolve_local_edition_download(
+        platform, session_id, current_user, db, version
+    )
     return {"url": asset_url}
 
 @router.get("/download")
@@ -118,12 +121,54 @@ async def check_local_edition_download(
 async def download_local_edition(
     request: Request,
     platform: str = Query(...),
+    version: str = Query(None),
     session_id: str = Query(None),
     current_user: User = Depends(get_current_user_optional),
     db: Session = Depends(get_db),
 ):
-    asset_url = await LicenseService.resolve_local_edition_download(platform, session_id, current_user, db)
+    asset_url = await LicenseService.resolve_local_edition_download(
+        platform, session_id, current_user, db, version
+    )
     return RedirectResponse(url=asset_url, status_code=302)
+
+@router.get("/versions")
+@limiter.limit("30/minute")
+async def list_versions(
+    request: Request,
+    platform: str = Query(None),
+    include_prereleases: bool = Query(False),
+    db: Session = Depends(get_db),
+):
+    if platform and platform not in LicenseService.PLATFORM_MARKERS:
+        raise HTTPException(status_code=400, detail="Invalid platform")
+
+    query = db.query(BuildVersion)
+    if platform:
+        query = query.filter(BuildVersion.platform == platform)
+    current_versions = {row.version for row in query.all()}
+
+    releases = await LicenseService.list_releases()
+
+    versions = []
+    for r in releases:
+        if r["prerelease"] and not include_prereleases:
+            continue
+        if platform and platform not in r["platforms"]:
+            continue
+        versions.append({
+            "version": r["version"],
+            "build_number": r["build_number"],
+            "released_at": r["released_at"],
+            "prerelease": r["prerelease"],
+            "notes": r["notes"],
+            "platforms": sorted(r["platforms"].keys()),
+            "is_current": r["version"] in current_versions,
+        })
+
+    return {
+        "current": next((v for v in versions if v["is_current"]), None),
+        "versions": versions,
+    }
 
 @router.get("/version/latest")
 def get_latest_version(
@@ -206,4 +251,3 @@ def check_license_count_threshold(db: Session = Depends(get_db)):
 
     count = db.query(License).filter(License.status == "active").count()
     return {"under_500": count < 500}
-
