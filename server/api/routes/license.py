@@ -251,3 +251,9 @@ def check_license_count_threshold(db: Session = Depends(get_db)):
 
     count = db.query(License).filter(License.status == "active").count()
     return {"under_500": count < 500}
+
+@router.get("/count/total")
+def check_license_count_threshold(db: Session = Depends(get_db)):
+
+    count = db.query(License).filter(License.status == "active").count()
+    return {"total": count}
