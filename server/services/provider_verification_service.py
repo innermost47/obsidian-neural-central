@@ -14,7 +14,7 @@ from sqlalchemy import func
 from scipy.spatial.distance import cosine
 from sqlalchemy.orm import Session
 from server.config import settings
-from server.api.models import ProviderStatusResponse, ProviderGenerateResponse, SupportedModel
+from server.api.models import ProviderGenerateResponse, SupportedModel
 
 logger = logging.getLogger(__name__)
 
@@ -46,7 +46,7 @@ class ProviderVerificationService:
         seed: int,
         duration: int,
         provider_api_key_hash: str,
-        round_model:str
+        round_model: str,
     ) -> Optional[Dict]:
         async with httpx.AsyncClient(timeout=settings.VERIFY_TIMEOUT) as client:
             try:
@@ -386,7 +386,7 @@ class ProviderVerificationService:
                 s_seed,
                 s_duration,
                 trusted.api_key,
-                round_model
+                round_model,
             )
             if not result or not result.get("wav"):
                 logger.warning(f"  ⚠️  Trusted failed to generate sample '{s_prompt}'")
@@ -440,10 +440,7 @@ class ProviderVerificationService:
 
     @staticmethod
     async def _build_reference(
-        db: Session,
-        trusted,
-        report: Dict,
-        round_model: str
+        db: Session, trusted, report: Dict, round_model: str
     ) -> Tuple[Optional[np.ndarray], Optional[str], str, int]:
         from server.core.security import decrypt_server_key
 
@@ -461,7 +458,9 @@ class ProviderVerificationService:
             logger.warning(
                 f"⚠️  Trusted '{trusted.name}' busy — falling back to sample bank"
             )
-            return ProviderVerificationService._draw_reference_from_bank(db, model_filter=round_model)
+            return ProviderVerificationService._draw_reference_from_bank(
+                db, model_filter=round_model
+            )
 
         try:
             decrypted_key = decrypt_server_key(trusted.encoded_server_auth_key)
@@ -515,7 +514,7 @@ class ProviderVerificationService:
                         seed,
                         duration,
                         p.api_key,
-                        round_model
+                        round_model,
                     )
                 )
             except Exception as e:
@@ -536,7 +535,7 @@ class ProviderVerificationService:
         reference_duration: int,
         seed: int,
         report: Dict,
-        round_model: str
+        round_model: str,
     ) -> None:
         from server.services.provider_service import ProviderService
 
@@ -628,20 +627,25 @@ class ProviderVerificationService:
             )
             report["failed"] += 1
             should_ban = ProviderVerificationService._flag_provider(db, provider.id)
-            ProviderVerificationService._save_result(db, provider.id, prompt, seed, None, False)
+            ProviderVerificationService._save_result(
+                db, provider.id, prompt, seed, None, False
+            )
             if should_ban:
                 ProviderVerificationService._ban_provider(
-                    db, provider.id,
-                    f"Model mismatch: declared '{result.get('model')}' but round required '{round_model}'"
+                    db,
+                    provider.id,
+                    f"Model mismatch: declared '{result.get('model')}' but round required '{round_model}'",
                 )
-            report["results"].append({
-                "provider_id": provider.id,
-                "provider_name": provider.name,
-                "model": result.get("model"),
-                "similarity": None,
-                "passed": False,
-                "note": "model_mismatch",
-            })
+            report["results"].append(
+                {
+                    "provider_id": provider.id,
+                    "provider_name": provider.name,
+                    "model": result.get("model"),
+                    "similarity": None,
+                    "passed": False,
+                    "note": "model_mismatch",
+                }
+            )
             return
 
         similarity = ProviderVerificationService._cosine_similarity(fp, reference_fp)
@@ -721,7 +725,9 @@ class ProviderVerificationService:
 
         trusted = ProviderVerificationService._get_trusted_provider(db)
         reference_fp, reference_model, reference_source, reference_duration = (
-            await ProviderVerificationService._build_reference(db, trusted, report, round_model)
+            await ProviderVerificationService._build_reference(
+                db, trusted, report, round_model
+            )
         )
 
         if reference_fp is None:
@@ -760,7 +766,7 @@ class ProviderVerificationService:
                     reference_duration,
                     seed,
                     report,
-                    round_model
+                    round_model,
                 )
         finally:
             for p in locked_providers:
