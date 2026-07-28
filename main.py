@@ -28,11 +28,9 @@ from server.api.routes import (
     admin_providers,
     public,
     unsubscribe,
-    license
+    license,
 )
 from server.services.provider_verification_service import ProviderVerificationService
-
-logger = logging.getLogger(__name__)
 
 
 async def run_provider_ping():
@@ -40,7 +38,7 @@ async def run_provider_ping():
     try:
         await ProviderPingService.check_and_ping(db)
     except Exception as e:
-        logger.error(f"Provider ping error: {e}")
+        print(f"Provider ping error: {e}")
     finally:
         db.close()
 
@@ -49,20 +47,20 @@ async def run_provider_verification_forever():
     try:
         await ProviderVerificationService.run_forever()
     except Exception as e:
-        logger.error(f"Provider verification loop crashed: {e}")
+        print(f"Provider verification loop crashed: {e}")
 
 
 async def run_provider_canary_tests():
     try:
         await ProviderVerificationService.randomly_test_providers()
     except Exception as e:
-        logger.error(f"Canary tests loop crashed: {e}")
+        print(f"Canary tests loop crashed: {e}")
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     init_db()
-    logger.info("✅ Database initialized")
+    print("✅ Database initialized")
     db = SessionLocal()
     try:
         reset_count = (
@@ -81,9 +79,9 @@ async def lifespan(app: FastAPI):
             )
         )
         db.commit()
-        logger.info(f"✅ Reset transient flags on {reset_count} active providers")
+        print(f"✅ Reset transient flags on {reset_count} active providers")
     except Exception as e:
-        logger.error(f"❌ Failed to reset providers status: {e}")
+        print(f"❌ Failed to reset providers status: {e}")
         db.rollback()
     finally:
         db.close()
@@ -104,18 +102,18 @@ async def lifespan(app: FastAPI):
         provider_scheduler.start()
         asyncio.create_task(run_provider_verification_forever())
         asyncio.create_task(run_provider_canary_tests())
-        logger.info("✅ Provider verification loop started (random interval 1h–5h)")
-        logger.info("✅ Provider canary tests started (random interval 1h–6h)")
-        logger.info("✅ Provider ping scheduler started.")
+        print("✅ Provider verification loop started (random interval 1h–5h)")
+        print("✅ Provider canary tests started (random interval 1h–6h)")
+        print("✅ Provider ping scheduler started.")
     except Exception as e:
-        logger.error(f"Failed to start provider ping scheduler: {e}")
+        print(f"Failed to start provider ping scheduler: {e}")
     yield
     try:
         if provider_scheduler:
             provider_scheduler.shutdown()
-            logger.info("🛑 Provider ping scheduler stopped")
+            print("🛑 Provider ping scheduler stopped")
     except Exception as e:
-        logger.error(f"Error stopping provider ping scheduler: {e}")
+        print(f"Error stopping provider ping scheduler: {e}")
 
 
 app = FastAPI(
@@ -165,6 +163,7 @@ def root():
 @app.get("/health")
 def health_check():
     return {"status": "healthy"}
+
 
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)

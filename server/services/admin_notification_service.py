@@ -1,4 +1,3 @@
-import logging
 from typing import Optional
 from datetime import datetime, timezone
 from server.services.email_service import EmailService
@@ -10,8 +9,6 @@ from server.templates.email_template import (
     btn_secondary,
 )
 from server.config import settings
-
-logger = logging.getLogger(__name__)
 
 ADMIN_EMAIL = settings.SMTP_TO_EMAIL
 
@@ -34,7 +31,7 @@ def _send(subject: str, content: str, email_type: str) -> bool:
             email_type=email_type,
         )
     except Exception as e:
-        logger.error(f"Failed to send admin notification [{email_type}]: {e}")
+        print(f"Failed to send admin notification [{email_type}]: {e}")
         return False
 
 
@@ -353,7 +350,7 @@ class AdminNotificationService:
             content,
             "admin_provider_banned",
         )
-    
+
     @staticmethod
     def notify_new_vst_license(
         email: str, user_id: int, license_key: str, amount: str = None

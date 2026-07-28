@@ -1,7 +1,5 @@
-import logging
 from datetime import datetime, timezone
 from sqlalchemy.orm import Session
-
 from server.templates.email_template import (
     base_template,
     info_box,
@@ -10,8 +8,6 @@ from server.templates.email_template import (
 )
 from server.services.email_service import EmailService
 from server.config import settings
-
-logger = logging.getLogger(__name__)
 
 
 def _now() -> str:
@@ -44,9 +40,7 @@ def _send_to_all_providers(
 ) -> int:
     emails = _get_active_provider_emails(db)
     if not emails:
-        logger.info(
-            f"[ProviderNotification] No active providers to notify for {email_type}"
-        )
+        print(f"[ProviderNotification] No active providers to notify for {email_type}")
         return 0
 
     sent = 0
@@ -57,9 +51,9 @@ def _send_to_all_providers(
             if ok:
                 sent += 1
         except Exception as e:
-            logger.error(f"[ProviderNotification] Failed to notify {email}: {e}")
+            print(f"[ProviderNotification] Failed to notify {email}: {e}")
 
-    logger.info(
+    print(
         f"[ProviderNotification] {sent}/{len(emails)} providers notified for {email_type}"
     )
     return sent
@@ -253,5 +247,5 @@ class ProviderNotificationService:
                 email_type="provider_banned",
             )
         except Exception as e:
-            logger.error(f"Failed to send ban notification to {provider_email}: {e}")
+            print(f"Failed to send ban notification to {provider_email}: {e}")
             return False

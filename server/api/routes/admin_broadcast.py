@@ -7,10 +7,8 @@ from server.services.email_service import EmailService
 from server.templates.email_template import base_template, section_title
 from server.api.models import BroadcastEmailRequest
 from datetime import datetime, timezone
-import logging
 
 router = APIRouter(prefix="/admin/broadcast", tags=["Admin Broadcast"])
-logger = logging.getLogger(__name__)
 
 
 def get_admin_user(current_user: User = Depends(get_verified_user)):
@@ -92,11 +90,11 @@ async def send_broadcast_email(
                 sent_count += 1
             else:
                 failed_count += 1
-                logger.warning(f"Failed to send broadcast to {user.email}")
+                print(f"Failed to send broadcast to {user.email}")
 
         except Exception as e:
             failed_count += 1
-            logger.error(f"Error sending broadcast to {user.email}: {e}")
+            print(f"Error sending broadcast to {user.email}: {e}")
 
     broadcast = BroadcastEmail(
         subject=request.subject,
@@ -110,7 +108,7 @@ async def send_broadcast_email(
     db.add(broadcast)
     db.commit()
 
-    logger.info(f"Broadcast by {admin.email}: {sent_count} sent, {failed_count} failed")
+    print(f"Broadcast by {admin.email}: {sent_count} sent, {failed_count} failed")
 
     return {
         "message": "Broadcast email sent",

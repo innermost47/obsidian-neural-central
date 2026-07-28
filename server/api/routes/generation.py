@@ -35,9 +35,6 @@ async def generate_audio(
                 },
             )
         request.key = request.key.replace("Aeolian", "minor").replace("Ionian", "major")
-        print(
-            f"DEBUG 1 [VST IN]: Key='{request.key}', BPM={request.bpm}, Model='{request.model}'"
-        )
         credits_needed = 1
         remaining_after = 0
         if not current_user.is_admin:
@@ -59,9 +56,6 @@ async def generate_audio(
             "bars": None,
             "duration": int(request.generation_duration),
         }
-        print(
-            f"DEBUG 2 [LLM OUT]: Resolved Prompt='{resolved.get('prompt')}', Resolved Key='{resolved.get('key')}'"
-        )
         result = await ProviderService.generate_audio(
             prompt=resolved["prompt"],
             duration=resolved["duration"] or int(request.generation_duration),

@@ -1,5 +1,4 @@
 import smtplib
-import logging
 import uuid
 import re
 from email.mime.text import MIMEText
@@ -23,8 +22,6 @@ from server.core.database import License
 from concurrent.futures import ThreadPoolExecutor
 
 executor = ThreadPoolExecutor(max_workers=5)
-
-logger = logging.getLogger(__name__)
 
 
 class EmailService:
@@ -83,10 +80,14 @@ class EmailService:
                     msg["List-Unsubscribe-Post"] = "List-Unsubscribe=One-Click"
 
                 if settings.SMTP_HOST != "localhost":
-                    smtp = smtplib.SMTP_SSL(settings.SMTP_HOST, settings.SMTP_PORT, timeout=30)
+                    smtp = smtplib.SMTP_SSL(
+                        settings.SMTP_HOST, settings.SMTP_PORT, timeout=30
+                    )
                     smtp.login(settings.SMTP_USERNAME, settings.SMTP_PASSWORD)
                 else:
-                    smtp = smtplib.SMTP(settings.SMTP_HOST, settings.SMTP_PORT, timeout=30)
+                    smtp = smtplib.SMTP(
+                        settings.SMTP_HOST, settings.SMTP_PORT, timeout=30
+                    )
 
                 with smtp as server:
                     server.login(settings.SMTP_USERNAME, settings.SMTP_PASSWORD)
@@ -102,10 +103,10 @@ class EmailService:
                     log.sent_at = datetime.now(timezone.utc)
                     worker_db.commit()
 
-                logger.info(f"✅ Background Email sent to {to_email}")
+                print(f"✅ Background Email sent to {to_email}")
 
             except Exception as e:
-                logger.error(f"❌ Background Email failed: {e}")
+                print(f"❌ Background Email failed: {e}")
                 if email_log_id:
                     try:
                         log = (
@@ -125,7 +126,7 @@ class EmailService:
         executor.submit(_execute_dispatch)
 
         return True
-    
+
     @staticmethod
     def _get_promo_section(db: Session = None) -> str:
         if not db:
@@ -768,7 +769,7 @@ class EmailService:
                 server.send_message(msg)
             return True
         except Exception as e:
-            logger.error(f"Contact notification failed: {e}")
+            print(f"Contact notification failed: {e}")
             return False
 
     @staticmethod
@@ -984,7 +985,11 @@ class EmailService:
 
     @staticmethod
     def send_vst_license_email(
-        email: str, license_key: str, session_id: str, user_id: int = None, db: Session = None
+        email: str,
+        license_key: str,
+        session_id: str,
+        user_id: int = None,
+        db: Session = None,
     ) -> bool:
         unsub = EmailService._get_unsubscribe_token(user_id, db) if db else ""
 

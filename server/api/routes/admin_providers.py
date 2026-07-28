@@ -14,11 +14,9 @@ from server.api.models import (
     UpdateProviderRequest,
     BanProviderRequest,
 )
-import logging
 from server.core.security import encrypt_server_key
 
 router = APIRouter(prefix="/admin/providers", tags=["Admin Providers"])
-logger = logging.getLogger(__name__)
 
 
 def get_admin_user(current_user: User = Depends(get_verified_user)):
@@ -126,7 +124,7 @@ async def add_provider(
         user_id=request.user_id or None,
     )
 
-    logger.info(f"Provider added: {request.name} ({request.url})")
+    print(f"Provider added: {request.name} ({request.url})")
 
     return {
         "message": "Provider added successfully",
