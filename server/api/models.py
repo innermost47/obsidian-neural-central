@@ -59,7 +59,7 @@ class GenerateRequest(BaseModel):
     image_temperature: Optional[float] = 0.7
     keywords: Optional[List[str]] = []
     bypass_llm: Optional[bool] = True
-    sync_on_server: Optional[bool] = True
+    sync_on_server: Optional[bool] = False
 
     model_config = ConfigDict(
         protected_namespaces=(),
@@ -123,7 +123,15 @@ class ContactRequest(BaseModel):
 
     @validator("subject")
     def valid_subject(cls, v):
-        allowed = ["support", "billing", "feature", "bug", "partnership", "other", "beta"]
+        allowed = [
+            "support",
+            "billing",
+            "feature",
+            "bug",
+            "partnership",
+            "other",
+            "beta",
+        ]
         if v not in allowed:
             raise ValueError("Invalid subject")
         return v
@@ -297,21 +305,26 @@ class ProviderLLMResponse(BaseModel):
     provider_key: str
     audio_model: Optional[SupportedModel] = None
 
+
 class LicenseActivateRequest(BaseModel):
     key: str
     machine_id: str
+
 
 class LicenseReleaseRequest(BaseModel):
     key: str
     machine_id: str
 
+
 class VstCheckoutRequest(BaseModel):
     email: str | None = None
     promo_code: str | None = None
 
+
 class BuildEntry(BaseModel):
     platform: str
     asset_name: str
+
 
 class BuildVersionsUpdate(BaseModel):
     version: str
