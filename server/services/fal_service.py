@@ -1,13 +1,8 @@
 import fal_client
-from typing import Dict, Any, List
+from typing import Dict, Any
 from server.config import settings
-from sqlalchemy.orm import Session
-from sqlalchemy import desc
 import os
-import json
-import re
 from server.core.concurrency import EXTERNAL_API_SEMAPHORE
-from server.prompts import get_vision_system_prompt, get_system_prompt
 
 os.environ["FAL_KEY"] = settings.FAL_KEY
 
