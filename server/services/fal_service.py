@@ -8,8 +8,6 @@ os.environ["FAL_KEY"] = settings.FAL_KEY
 
 
 class FalService:
-    MAX_MESSAGES_PER_USER = 10
-
     @staticmethod
     async def generate_audio(prompt: str, duration: int) -> Dict[str, Any]:
         async with EXTERNAL_API_SEMAPHORE:

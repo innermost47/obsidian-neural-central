@@ -1,6 +1,5 @@
 import asyncio
 import io
-import logging
 import secrets
 import random
 import hashlib
@@ -16,8 +15,6 @@ from sqlalchemy.orm import Session
 from server.config import settings
 from server.api.models import ProviderGenerateResponse, SupportedModel
 
-logger = logging.getLogger(__name__)
-
 
 class ProviderVerificationService:
 
@@ -30,7 +27,7 @@ class ProviderVerificationService:
             mel_db = librosa.power_to_db(mel, ref=np.max)
             return mel_db.mean(axis=1).astype(np.float32)
         except Exception as e:
-            logger.error(f"Failed to compute mel fingerprint: {e}")
+            print(f"Failed to compute mel fingerprint: {e}")
             return None
 
     @staticmethod
@@ -66,9 +63,7 @@ class ProviderVerificationService:
                 )
 
                 if response.status_code != 200:
-                    logger.warning(
-                        f"Verify request failed: HTTP {response.status_code}"
-                    )
+                    print(f"Verify request failed: HTTP {response.status_code}")
                     return None
 
                 try:
@@ -81,7 +76,7 @@ class ProviderVerificationService:
                     }
                     gen_response = ProviderGenerateResponse(**header_data)
                 except ValidationError as e:
-                    logger.warning(f"🚫 {provider_url} — invalid response headers: BAN")
+                    print(f"🚫 {provider_url} — invalid response headers: BAN")
                     await ProviderVerificationService._ban_async(
                         provider_id, f"Invalid response headers format: {e}"
                     )
@@ -91,9 +86,7 @@ class ProviderVerificationService:
                     gen_response.api_key.encode()
                 ).hexdigest()
                 if returned_key_hash != provider_api_key_hash:
-                    logger.warning(
-                        f"🚫 {provider_url} — invalid key in verify response: BAN"
-                    )
+                    print(f"🚫 {provider_url} — invalid key in verify response: BAN")
                     await ProviderVerificationService._ban_async(
                         provider_id, "Invalid API key in verify response"
                     )
@@ -101,14 +94,14 @@ class ProviderVerificationService:
 
                 content_type = response.headers.get("content-type", "")
                 if "audio" not in content_type and "octet-stream" not in content_type:
-                    logger.warning(f"🚫 {provider_url} — invalid content-type: BAN")
+                    print(f"🚫 {provider_url} — invalid content-type: BAN")
                     await ProviderVerificationService._ban_async(
                         provider_id, "Invalid content-type in response"
                     )
                     return None
 
                 if gen_response.seed != seed:
-                    logger.warning(f"🚫 {provider_url} — seed mismatch: BAN")
+                    print(f"🚫 {provider_url} — seed mismatch: BAN")
                     await ProviderVerificationService._ban_async(
                         provider_id, "Seed mismatch in verify response"
                     )
@@ -120,7 +113,7 @@ class ProviderVerificationService:
                 }
 
             except Exception as e:
-                logger.warning(f"Verify request error: {e}")
+                print(f"Verify request error: {e}")
                 return None
 
     @staticmethod
@@ -166,9 +159,7 @@ class ProviderVerificationService:
         )
         db.add(sample)
         db.commit()
-        logger.info(
-            f"📦 Sample stored — prompt: '{prompt}' seed: {seed} model: {model}"
-        )
+        print(f"📦 Sample stored — prompt: '{prompt}' seed: {seed} model: {model}")
         return True
 
     @staticmethod
@@ -195,7 +186,7 @@ class ProviderVerificationService:
         try:
             return decrypt_fingerprint(sample.encrypted_fingerprint)
         except Exception as e:
-            logger.error(f"Failed to decrypt sample fingerprint: {e}")
+            print(f"Failed to decrypt sample fingerprint: {e}")
             return None
 
     @staticmethod
@@ -235,7 +226,7 @@ class ProviderVerificationService:
                     user.subscription_tier = "free"
                     user.subscription_status = "inactive"
             db.commit()
-            logger.warning(f"🚫 Provider {provider.name} BANNED: {reason}")
+            print(f"🚫 Provider {provider.name} BANNED: {reason}")
 
     @staticmethod
     def _save_result(
@@ -290,7 +281,7 @@ class ProviderVerificationService:
 
     @staticmethod
     def _report_skipped(report: Dict, provider, note: str) -> None:
-        logger.warning(f"  ⏭️  {provider.name} skipped — {note}")
+        print(f"  ⏭️  {provider.name} skipped — {note}")
         report["results"].append(
             {
                 "provider_id": provider.id,
@@ -362,13 +353,13 @@ class ProviderVerificationService:
         needed = max(0, settings.TRUSTED_SAMPLE_TARGET - existing_count)
 
         if needed == 0:
-            logger.info(
+            print(
                 f"📦 Sample bank full ({existing_count}/{settings.TRUSTED_SAMPLE_TARGET})"
                 f"for model '{round_model}' — no fill needed"
             )
             return
 
-        logger.info(
+        print(
             f"📦 Filling sample bank: {needed} sample(s) needed "
             f"({existing_count}/{settings.TRUSTED_SAMPLE_TARGET}) for model '{round_model}'"
         )
@@ -389,24 +380,22 @@ class ProviderVerificationService:
                 round_model,
             )
             if not result or not result.get("wav"):
-                logger.warning(f"  ⚠️  Trusted failed to generate sample '{s_prompt}'")
+                print(f"  ⚠️  Trusted failed to generate sample '{s_prompt}'")
                 continue
             if not ProviderService._validate_wav_ffmpeg(result["wav"]):
-                logger.warning(
-                    f"  ⚠️  Trusted returned invalid WAV for sample '{s_prompt}'"
-                )
+                print(f"  ⚠️  Trusted returned invalid WAV for sample '{s_prompt}'")
                 continue
             fp = ProviderVerificationService._get_mel_fingerprint(
                 result["wav"], s_duration
             )
             if fp is None:
-                logger.warning(f"  ⚠️  Bad fingerprint for sample '{s_prompt}'")
+                print(f"  ⚠️  Bad fingerprint for sample '{s_prompt}'")
                 continue
             ok = ProviderVerificationService._store_sample(
                 db, s_prompt, s_seed, round_model, fp, s_duration
             )
             if ok:
-                logger.info(f"  ✅ Sample stored — prompt: '{s_prompt}' seed: {s_seed}")
+                print(f"  ✅ Sample stored — prompt: '{s_prompt}' seed: {s_seed}")
 
     @staticmethod
     def _draw_reference_from_bank(
@@ -428,14 +417,14 @@ class ProviderVerificationService:
         source = "sample_bank_random" if model_filter else "sample_bank_random_fallback"
         try:
             fp = decrypt_fingerprint(chosen.encrypted_fingerprint)
-            logger.info(
+            print(
                 f"🎲 Reference drawn from bank — prompt: '{chosen.prompt}' "
                 f"seed: {chosen.seed} model: {chosen.model} "
                 f"(pool: {len(samples)} samples)"
             )
             return fp, chosen.model, source, chosen.duration
         except Exception as e:
-            logger.error(f"Failed to decrypt chosen sample: {e}")
+            print(f"Failed to decrypt chosen sample: {e}")
             return None, None, "none", settings.VERIFY_DURATION
 
     @staticmethod
@@ -455,9 +444,7 @@ class ProviderVerificationService:
         trusted_locked = bool(trusted_locked_list)
 
         if not trusted_locked:
-            logger.warning(
-                f"⚠️  Trusted '{trusted.name}' busy — falling back to sample bank"
-            )
+            print(f"⚠️  Trusted '{trusted.name}' busy — falling back to sample bank")
             return ProviderVerificationService._draw_reference_from_bank(
                 db, model_filter=round_model
             )
@@ -473,10 +460,10 @@ class ProviderVerificationService:
                 )
             )
             if fp is None:
-                logger.warning("⚠️  Sample bank still empty after fill attempt")
+                print("⚠️  Sample bank still empty after fill attempt")
             return fp, ref_model, source, ref_duration
         except Exception as e:
-            logger.error(f"Failed during trusted reference phase: {e}")
+            print(f"Failed during trusted reference phase: {e}")
             return None, None, "none", settings.VERIFY_DURATION
         finally:
             ProviderVerificationService._unlock_provider_after_test(db, trusted.id)
@@ -518,7 +505,7 @@ class ProviderVerificationService:
                     )
                 )
             except Exception as e:
-                logger.error(f"Failed to decrypt key for {p.name}: {e}")
+                print(f"Failed to decrypt key for {p.name}: {e}")
                 tasks.append(asyncio.sleep(0, result=None))
 
         raw_results = await asyncio.gather(*tasks, return_exceptions=True)
@@ -540,7 +527,7 @@ class ProviderVerificationService:
         from server.services.provider_service import ProviderService
 
         if isinstance(result, Exception) or result is None:
-            logger.warning(f"  ❌ {provider.name} — no response")
+            print(f"  ❌ {provider.name} — no response")
             report["failed"] += 1
             should_ban = ProviderVerificationService._flag_provider(db, provider.id)
             ProviderVerificationService._save_result(
@@ -568,7 +555,7 @@ class ProviderVerificationService:
         provider_model = result.get("model", "unknown")
 
         if not ProviderService._validate_wav_ffmpeg(wav):
-            logger.warning(f"  ❌ {provider.name} — WAV failed ffmpeg validation")
+            print(f"  ❌ {provider.name} — WAV failed ffmpeg validation")
             report["failed"] += 1
             should_ban = ProviderVerificationService._flag_provider(db, provider.id)
             ProviderVerificationService._save_result(
@@ -594,7 +581,7 @@ class ProviderVerificationService:
         fp = ProviderVerificationService._get_mel_fingerprint(wav, reference_duration)
 
         if fp is None:
-            logger.warning(f"  ❌ {provider.name} — invalid audio")
+            print(f"  ❌ {provider.name} — invalid audio")
             report["failed"] += 1
             should_ban = ProviderVerificationService._flag_provider(db, provider.id)
             ProviderVerificationService._save_result(
@@ -621,7 +608,7 @@ class ProviderVerificationService:
         report["responded"] += 1
 
         if result.get("model") != round_model:
-            logger.warning(
+            print(
                 f"  ❌ {provider.name} — model mismatch "
                 f"(declared: {result.get('model')} / expected: {round_model})"
             )
@@ -651,7 +638,7 @@ class ProviderVerificationService:
         similarity = ProviderVerificationService._cosine_similarity(fp, reference_fp)
         passed = similarity >= settings.SIMILARITY_THRESHOLD
 
-        logger.info(
+        print(
             f"  {'✅' if passed else '❌'} {provider.name} "
             f"— similarity: {similarity:.4f} ({'pass' if passed else 'FAIL'}) "
             f"| model: {provider_model} | ref: {reference_source}"
@@ -673,7 +660,7 @@ class ProviderVerificationService:
                     f"for {settings.MAX_CONSECUTIVE_FAILS} consecutive rounds "
                     f"(model: {provider_model}, ref: {reference_source})",
                 )
-                logger.warning(
+                print(
                     f"🚫 {provider.name} banned after {settings.MAX_CONSECUTIVE_FAILS} failures"
                 )
 
@@ -706,7 +693,7 @@ class ProviderVerificationService:
         )
 
         if not all_providers:
-            logger.info("⚡ No non-trusted providers to verify")
+            print("⚡ No non-trusted providers to verify")
             return {"status": "skipped", "reason": "no_providers"}
 
         sample_size = max(1, int(len(all_providers) * settings.VERIFY_POOL_PCT))
@@ -715,7 +702,7 @@ class ProviderVerificationService:
         prompt = settings.build_verification_prompt()
         seed = random.randint(0, 2**31 - 1)
 
-        logger.info(
+        print(
             f"🔍 Verification round — {len(selected)}/{len(all_providers)} providers "
             f"| prompt: '{prompt}' | seed: {seed}"
         )
@@ -731,7 +718,7 @@ class ProviderVerificationService:
         )
 
         if reference_fp is None:
-            logger.warning("⏸️  No reference available — round BYPASSED")
+            print("⏸️  No reference available — round BYPASSED")
             return {
                 "status": "bypassed",
                 "reason": "no_reference_available",
@@ -749,7 +736,7 @@ class ProviderVerificationService:
         )
 
         if not locked_providers:
-            logger.info("⚡ No providers ready for verification this round")
+            print("⚡ No providers ready for verification this round")
             report["status"] = "skipped"
             report["reason"] = "all_providers_busy"
             return report
@@ -773,7 +760,7 @@ class ProviderVerificationService:
                 ProviderVerificationService._unlock_provider_after_test(db, p.id)
 
         passed_count = sum(1 for r in report["results"] if r["passed"])
-        logger.info(
+        print(
             f"✅ Verification round complete — "
             f"{passed_count}/{len(report['results'])} passed "
             f"| reference: {reference_source} (model: {reference_model})"
@@ -799,7 +786,7 @@ class ProviderVerificationService:
                     return True
             await asyncio.sleep(poll_interval)
 
-        logger.warning(
+        print(
             f"⏱️  {provider_name} still generating after {timeout}s — skipping for this round"
         )
         return False
@@ -825,7 +812,7 @@ class ProviderVerificationService:
                 p.is_disposable = True
                 db.commit()
         except Exception as e:
-            logger.error(f"Failed to unlock provider {provider_id}: {e}")
+            print(f"Failed to unlock provider {provider_id}: {e}")
 
     @staticmethod
     async def run_forever():
@@ -837,7 +824,7 @@ class ProviderVerificationService:
             )
             hours = delay // 3600
             mins = (delay % 3600) // 60
-            logger.info(f"⏳ Next verification round in {hours}h{mins:02d}m")
+            print(f"⏳ Next verification round in {hours}h{mins:02d}m")
 
             await asyncio.sleep(delay)
 
@@ -845,7 +832,7 @@ class ProviderVerificationService:
                 try:
                     await ProviderVerificationService.run_verification_round(db)
                 except Exception as e:
-                    logger.error(f"❌ Verification round error: {e}")
+                    print(f"❌ Verification round error: {e}")
 
     @staticmethod
     async def randomly_test_providers():
@@ -856,7 +843,7 @@ class ProviderVerificationService:
                 delay_seconds = random.randint(3600, 21600)
                 hours = delay_seconds // 3600
                 mins = (delay_seconds % 3600) // 60
-                logger.info(f"⏳ Next random provider test in {hours}h{mins:02d}m")
+                print(f"⏳ Next random provider test in {hours}h{mins:02d}m")
                 await asyncio.sleep(delay_seconds)
                 with SessionLocal() as db:
                     total_providers = (
@@ -865,7 +852,7 @@ class ProviderVerificationService:
                         .count()
                     )
                     if total_providers == 0:
-                        logger.warning("⚠️  No active providers to test")
+                        print("⚠️  No active providers to test")
                         continue
                     num_providers = max(1, total_providers // 3)
                     providers = (
@@ -880,9 +867,9 @@ class ProviderVerificationService:
                         .all()
                     )
                     if not providers:
-                        logger.warning("⚠️  No active providers to test")
+                        print("⚠️  No active providers to test")
                         continue
-                    logger.info(
+                    print(
                         f"🔍 Randomly testing {len(providers)}/{total_providers} providers"
                     )
                     for provider in providers:
@@ -893,7 +880,7 @@ class ProviderVerificationService:
                         inter_delay = random.randint(30, 300)
                         await asyncio.sleep(inter_delay)
             except Exception as e:
-                logger.error(f"❌ Provider random testing error: {e}")
+                print(f"❌ Provider random testing error: {e}")
                 await asyncio.sleep(600)
 
     @staticmethod
@@ -1086,7 +1073,7 @@ class ProviderVerificationService:
         test_cases = selected_regular + dynamic_canaries
         random.shuffle(test_cases)
 
-        logger.info(
+        print(
             f"🧪 Testing provider {provider.name} (ID: {provider.id}) — {len(test_cases)} tests ({len(dynamic_canaries)} canary)"
         )
         passed = 0
@@ -1103,29 +1090,29 @@ class ProviderVerificationService:
                     )
 
                     if response.status_code == expected_status:
-                        logger.debug(f"  ✅ {test_name}: HTTP {response.status_code}")
+                        print(f"  ✅ {test_name}: HTTP {response.status_code}")
                         passed += 1
                     else:
-                        logger.warning(
+                        print(
                             f"  ❌ {test_name}: expected {expected_status}, got {response.status_code}"
                         )
                         failed += 1
 
                         if "Canary:" in test_name:
                             if response.status_code in (502, 503, 504, 500):
-                                logger.warning(
+                                print(
                                     f"  ⚠️ CANARY INCONCLUSIVE — provider {provider.name} seems offline (HTTP {response.status_code}), skipping ban"
                                 )
                                 return
                             else:
-                                logger.warning(
+                                print(
                                     f"  🚫 CANARY FAILED — code modification detected on {provider.name}"
                                 )
                                 canary_failed = True
                                 break
 
                 except Exception as e:
-                    logger.error(f"  ❌ {test_name}: exception {e}")
+                    print(f"  ❌ {test_name}: exception {e}")
                     failed += 1
 
                 await asyncio.sleep(random.uniform(0.5, 3))
@@ -1136,11 +1123,11 @@ class ProviderVerificationService:
                 provider.id,
                 reason="Canary test failed: provider accepted invalid action (code modification detected)",
             )
-            logger.warning(f"🚫 Provider {provider.name} BANNED")
+            print(f"🚫 Provider {provider.name} BANNED")
             return
 
-        logger.info(
+        print(
             f"✅ Error handling complete for {provider.name}: {passed}/{passed+failed} passed"
         )
         if failed > 0:
-            logger.warning(f"⚠️  {provider.name} failed {failed} test(s)")
+            print(f"⚠️  {provider.name} failed {failed} test(s)")
