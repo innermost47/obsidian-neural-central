@@ -370,7 +370,7 @@ class ProviderService:
         user_id: int,
         public_user_id: str,
         db: Session,
-        model: str = "stable-audio-open-1.0",
+        model: str = settings.DEFAULT_MODEL,
         bpm: Optional[int] = None,
         bars: Optional[int] = None,
         key: Optional[str] = None,
@@ -425,7 +425,7 @@ class ProviderService:
                     job.error_message = "Timeout waiting for provider"
                     db.commit()
 
-        if model != "stable-audio-open-1.0":
+        if model != settings.DEFAULT_MODEL:
             print(
                 f"🔄 No specialized provider available for model '{model}', "
                 f"falling back to fal.ai (stable-audio-open-1.0)..."

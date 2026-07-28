@@ -81,6 +81,8 @@ class Settings:
 
     API_URL = os.environ.get("API_URL")
 
+    DEFAULT_MODEL = "stable-audio-open-1.0"
+
     TIER_CREDITS = {
         "base": 150,
         "starter": 300,
