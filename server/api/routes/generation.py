@@ -37,7 +37,7 @@ async def generate_audio(
         request.key = request.key.replace("Aeolian", "minor").replace("Ionian", "major")
         credits_needed = 1
         remaining_after = 0
-        if not current_user.is_admin:
+        if not (current_user.is_admin or current_user.is_provider):
             remaining = CreditsService.get_user_credits(db, current_user.id)
             if remaining < credits_needed:
                 raise HTTPException(

@@ -84,11 +84,11 @@ class Settings:
     DEFAULT_MODEL = "stable-audio-open-1.0"
 
     TIER_CREDITS = {
-        "base": 150,
-        "starter": 300,
-        "pro": 500,
+        "base": 1500,
+        "starter": 3000,
+        "pro": 5000,
         "studio": 4000,
-        "provider": 500,
+        "provider": 5000,
     }
 
     TIER_PRICES = {

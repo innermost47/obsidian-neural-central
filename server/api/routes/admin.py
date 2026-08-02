@@ -4,7 +4,7 @@ from fastapi.security import APIKeyHeader
 from fastapi import APIRouter, Depends, HTTPException, Security
 from sqlalchemy.orm import Session
 from sqlalchemy import func
-from server.core.database import get_db, User, Generation
+from server.core.database import get_db, User, Generation, License
 from server.services.google_analytics_service import google_analytics_service
 from server.api.dependencies import get_verified_user
 from datetime import datetime, timedelta, timezone
@@ -55,6 +55,29 @@ async def get_all_users(
             .first()
         )
 
+        licenses = (
+            db.query(License)
+            .filter(License.user_id == user.id)
+            .order_by(License.created_at.desc())
+            .all()
+        )
+
+        licenses_list = [
+            {
+                "license_key": lic.license_key,
+                "tier": lic.tier,
+                "status": lic.status,
+                "is_beta": not lic.amount_paid,
+                "amount_paid": lic.amount_paid,
+                "max_activations": lic.max_activations,
+                "created_at": lic.created_at.isoformat() if lic.created_at else None,
+                "expiration_date": (
+                    lic.expiration_date.isoformat() if lic.expiration_date else None
+                ),
+            }
+            for lic in licenses
+        ]
+
         user_data = {
             "id": user.id,
             "email": user.email,
@@ -76,6 +99,10 @@ async def get_all_users(
                 last_generation.created_at.isoformat() if last_generation else None
             ),
             "accept_news_updates": user.accept_news_updates,
+            "licenses": licenses_list,
+            "total_licenses": len(licenses_list),
+            "beta_licenses": sum(1 for l in licenses_list if l["is_beta"]),
+            "paid_licenses": sum(1 for l in licenses_list if not l["is_beta"]),
         }
         user_list.append(user_data)
 

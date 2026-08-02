@@ -95,6 +95,11 @@ class User(Base):
         uselist=False,
     )
 
+    @property
+    def is_provider(self) -> bool:
+        p = self.provider
+        return bool(p and p.is_active and not p.is_banned and p.activation_token_used)
+
 
 class GiftSubscription(Base):
     __tablename__ = "gift_subscriptions"
@@ -441,6 +446,7 @@ class ProviderSemanticWarning(Base):
 
     provider = relationship("Provider", back_populates="semantic_warnings")
 
+
 class License(Base):
     __tablename__ = "licenses"
 
@@ -492,16 +498,18 @@ class LicenseActivation(Base):
 
     def __repr__(self):
         return f"<LicenseActivation license={self.license_id} machine={self.machine_id[:12]}>"
-    
+
+
 class BuildVersion(Base):
     __tablename__ = "build_versions"
 
     id = Column(Integer, primary_key=True, index=True)
-    platform = Column(String, unique=True, nullable=False, index=True) 
-    version = Column(String, nullable=False)    
-    asset_name = Column(String, nullable=False)      
+    platform = Column(String, unique=True, nullable=False, index=True)
+    version = Column(String, nullable=False)
+    asset_name = Column(String, nullable=False)
     released_at = Column(DateTime, nullable=True)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
 
 def get_db():
     db = SessionLocal()
