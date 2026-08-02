@@ -175,6 +175,7 @@ async def get_admin_stats(
 async def get_user_detail(
     user_id: int, db: Session = Depends(get_db), _: User = Depends(get_admin_user)
 ):
+
     user = db.query(User).filter(User.id == user_id).first()
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
@@ -200,6 +201,29 @@ async def get_user_detail(
         for gen in recent_generations
     ]
 
+    licenses = (
+        db.query(License)
+        .filter(License.user_id == user_id)
+        .order_by(License.created_at.desc())
+        .all()
+    )
+
+    licenses_list = [
+        {
+            "license_key": lic.license_key,
+            "tier": lic.tier,
+            "status": lic.status,
+            "is_beta": not lic.amount_paid,
+            "amount_paid": lic.amount_paid,
+            "max_activations": lic.max_activations,
+            "created_at": lic.created_at.isoformat() if lic.created_at else None,
+            "expiration_date": (
+                lic.expiration_date.isoformat() if lic.expiration_date else None
+            ),
+        }
+        for lic in licenses
+    ]
+
     return {
         "user": {
             "id": user.id,
@@ -218,6 +242,10 @@ async def get_user_detail(
             "last_login": user.last_login.isoformat() if user.last_login else None,
             "stripe_customer_id": user.stripe_customer_id,
             "stripe_subscription_id": user.stripe_subscription_id,
+            "licenses": licenses_list,
+            "total_licenses": len(licenses_list),
+            "beta_licenses": sum(1 for l in licenses_list if l["is_beta"]),
+            "paid_licenses": sum(1 for l in licenses_list if not l["is_beta"]),
         },
         "recent_generations": generations_list,
         "total_generations": db.query(Generation)
