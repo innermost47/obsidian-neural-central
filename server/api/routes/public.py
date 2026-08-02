@@ -1,6 +1,7 @@
 from typing import Optional
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
+from sqlalchemy import desc, func, cast, Date
 from datetime import datetime, timezone
 from server.core.database import get_db, OwnershipLog, FinanceReport
 from sqlalchemy import desc
@@ -123,4 +124,30 @@ def get_finance_reports(
             }
             for r in reports
         ],
+    }
+
+
+@router.get("/growth")
+async def public_growth(db: Session = Depends(get_db)):
+    from server.core.database import User
+
+    total_users = db.query(User).filter(User.is_admin == False).count()
+
+    daily_signups = (
+        db.query(
+            cast(User.created_at, Date).label("day"),
+            func.count(User.id).label("count"),
+        )
+        .filter(User.is_admin == False)
+        .group_by(cast(User.created_at, Date))
+        .order_by(cast(User.created_at, Date))
+        .all()
+    )
+
+    return {
+        "total_users": total_users,
+        "daily_signups": [
+            {"date": day.isoformat(), "count": count} for day, count in daily_signups
+        ],
+        "updated_at": datetime.now(timezone.utc).isoformat(),
     }
